@@ -85,7 +85,7 @@ growth.modGomp <- function(input = " ", output.name = " ", skip = "",
     s <- data.in[,which(colnames(data.in) == samples[i])]
     if (max(s) - min(s) < delta) {
       plot(s ~ t, main=samples[i], 
-           ylab=expression(paste("Absorbance"[415])), 
+           ylab=expression(paste("RFU")), 
            xlab=expression(paste("Time (hrs)")),
            pch=19, las = 1, cex.axis = 1, cex.lab = 1.5)
       legend("topleft", legend = bquote(Delta ~ "OD <" ~ .(delta)), bty = "n")
@@ -192,7 +192,7 @@ growth.modGomp <- function(input = " ", output.name = " ", skip = "",
     par(mar = c(6, 6, 4, 2))
     plot(s ~ t, main=samples[i], 
          ylim = c(0, (coef(best.f1)[2] + coef(best.f1)[1]) * 1.1),
-         ylab=expression(paste("Absorbance"[415])), 
+         ylab=expression(paste("RFU")), 
          xlab=expression(paste("Time (hrs)")),
          pch=19, las = 1, cex.axis = 1, cex.lab = 1.5, data=realdata)
     curve(m.gomp(x + tmpdata$t[1],coef(best.f1)[1:4]),
