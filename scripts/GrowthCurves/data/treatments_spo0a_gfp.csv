@@ -1,0 +1,16 @@
+Curve,sample,rep
+A1,LB_blank,1
+A4,GFP_control_R1,1
+A7,GFP_control_R2,2
+A10,GFP_BBphage_R1,1
+D1,GFP_BBphage_R2,2
+D4,GFP_BBphage_R3,3
+D7,GFP_HTphage_R1,1
+D10,GFP_HTphage_R2,2
+G1,GFP_HTphage_R3,3
+G4,GFP_BBveg_R1,1
+G7,GFP_BBveg_R2,2
+G10,GFP_BBveg_R3,3
+F10,WT_control_R1,1
+H1,WT_control_R2,2
+H4,WT_control_R3,3
