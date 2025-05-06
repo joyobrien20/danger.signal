@@ -1,0 +1,13 @@
+Curve,sample,rep,treatment
+A1,DSM_blank,1,blank
+A4,cDSM_blank,1,blank
+A7,GFP_DSM_control_R1,1,control
+A10,GFP_DSM_control_R2,2,control
+D1,GFP_DSM_BBphage_R1,1,BBphage
+D4,GFP_DSM_BBphage_R2,2,BBphage
+D7,GFP_DSM_BBphage_R3,3,BBphage
+D10,GFP_cDSM_control_R1,1,control
+G1,GFP_cDSM_control_R2,2,control
+G4,GFP_cDSM_Bbphage_R1,1,BBphage
+G7,GFP_cDSM_Bbphage_R2,2,BBphage
+G10,GFP_cDSM_Bbphage_R3,3,BBphage

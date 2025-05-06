@@ -1,0 +1,437 @@
+---
+title: "20241030_2300_virosporequant_magalie"
+author: "Joy O'Brien"
+date: "2024-10-31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(readxl)
+library(dplyr)
+library(tidyr)  
+library(vegan)
+library(ggplot2)
+library(mgcv)
+
+# Things to do: create project for this, fork the Magalie repo and add to it, 
+# Read data into 
+viro_dist <- read_excel("20241030_2300_virosporequant_magalie.xlsx", sheet = "Virospore_quant_orig")
+```
+
+```{r}
+# Since the sampling points are fixed values
+viro_dist$Distance_from_PFU_cm <- factor(viro_dist$Distance_from_PFU_cm)
+
+# Boxplot of recovered VPFU by distance from PFU
+ggplot(viro_dist, aes(x = Distance_from_PFU_cm, y = Recovered_viral_PFU, fill = Distance_from_PFU_cm)) +
+  geom_boxplot(alpha = 0.7) +
+  labs(title = "Recovered VPFU by Distance from PFU", x = "Distance from PFU", y = "Recovered VPFU") +
+  theme_minimal()
+
+# ANOVA
+anova_result <- aov(Recovered_viral_PFU ~ Distance_from_PFU_cm, data = viro_dist)
+summary(anova_result)
+
+```
+
+```{r}
+# Playing with the data to see if it fits any known distribution
+# Looking to fit the data, normal distribution
+library(fitdistrplus)
+fit_normal <-fitdist(viro_dist$Recovered_viral_PFU, "norm")
+summary(fit_normal)
+plot(fit_normal)
+
+AIC_norm <- AIC(fit_normal)
+
+# Fitting to exponential
+fit_expon <-fitdist(viro_dist$Recovered_viral_PFU, "exp")
+summary(fit_expon)
+plot(fit_expon)
+AIC_expon <- AIC(fit_expon)
+
+# Fitting to poisson 
+fit_poisson <-fitdist(viro_dist$Recovered_viral_PFU, "pois")
+summary(fit_poisson)
+plot(fit_poisson)
+AIC_poisson <- AIC(fit_poisson)
+
+# Fitting to gamma? I have 0s though...
+library(MASS)
+fit_gam <- fitdistr(viro_dist$Recovered_viral_PFU, "gamma")
+summary(fit_gam)
+plot(fit_gam)
+
+# Fitting to beta
+library(fitdistrplus)
+beta_fit <- fitdist(viro_dist$Recovered_viral_PFU / max(viro_dist$Recovered_vpfu), "beta")
+
+```
+```{r}
+# Continuing to play with the data
+#Log transform the data and fit to normal distribution
+viro_dist$log_recovered_VPFU <- log(viro_dist$Recovered_VPFU + 1)
+library(fitdistrplus)
+fit_normal_log <-fitdist(viro_dist$log_recovered_VPFU, "norm")
+summary(fit_normal_log)
+plot(fit_normal_log)
+
+AIC_norm_log <- AIC(fit_normal_log)
+
+# Log 10 transform the data and fit to normal distribution
+viro_dist$log10_recovered_VPFU <- log10(viro_dist$Recovered_VPFU + 1)
+library(fitdistrplus)
+fit_normal_log10 <-fitdist(viro_dist$log10_recovered_VPFU, "norm")
+summary(fit_normal_log10)
+plot(fit_normal_log10)
+
+AIC_norm_log10 <- AIC(fit_normal_log10)
+```
+
+```{r}
+# Based on the lowest AIC score, I think that log10 transformation of the data is the best choice??
+
+summary_datalog10 <- viro_dist %>%
+  group_by(Distance_from_PFU_cm) %>%
+  summarise(
+    mean_VPFU = mean(log10_recovered_VPFU, na.rm = TRUE),
+    std_dev = sd(log10_recovered_VPFU, na.rm = TRUE)
+  ) %>%
+  mutate(
+    lower_bound = mean_VPFU - std_dev,
+    upper_bound = mean_VPFU + std_dev
+  )
+
+# Plot the data
+ggplot(summary_datalog10, aes(x = Distance_from_PFU_cm)) +
+  geom_bar(aes(y = mean_VPFU), stat = "identity", fill = "lightgreen", color = "green", width = 0.7) +
+  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound), width = 0.2, color = "green") +
+  labs(x = "Region", y = "Recovered PFU") +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(hjust = -0.1)
+  ) +
+  ggtitle("Recovered PFU by Plaque Region")
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Normalize the data to the area before calculating summary statistics
+viro_dist$Recovered_VPFU_per_cm2 <- viro_dist$Recovered_viral_PFU / 0.00785
+# Calculate mean and standard deviation of recovered PFU for each sample region
+summary_data <- viro_dist %>%
+  group_by(Distance_from_PFU_cm) %>%
+  summarise(
+    mean_VPFU = mean(Recovered_VPFU_per_cm2, na.rm = TRUE),
+    std_dev = sd(Recovered_VPFU_per_cm2, na.rm = TRUE)
+  ) %>%
+  mutate(
+    lower_bound = mean_VPFU - std_dev,
+    upper_bound = mean_VPFU + std_dev
+  )
+
+# Plot the standardized data
+ggplot(viro_dist, aes(x = Distance_from_PFU_cm, y = Recovered_VPFU_per_cm2)) +
+  geom_point() +
+  labs(y = "Recovered VPFU per cm²")
+
+
+# Plot the data
+ggplot(summary_data, aes(x = Distance_from_PFU_cm)) +
+  geom_bar(aes(y = mean_VPFU), stat = "identity", fill = "lightgreen", color = "green", width = 0.7) +
+  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound), width = 0.2, color = "green") +
+  labs(x = "Region", y = "Recovered PFU") +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(hjust = -0.1)
+  ) +
+  ggtitle("Recovered PFU by Plaque Region")
+
+```
+
+```{r}
+# Plot including the raw data-- per cm2
+# Plot including raw data 
+ggplot(summary_data, aes(x = Distance_from_PFU_cm)) +
+  geom_point(data = viro_dist, aes(y = Recovered_VPFU_per_cm2, color = Plaque), alpha = 0.6, size = 1.5) +
+  geom_ribbon(aes(ymin = lower_bound, ymax = upper_bound, fill = "Standard deviation"), alpha = 0.2, show.legend = FALSE) +
+  geom_smooth(aes(y = mean_VPFU, color = "Mean"), size = 1) +
+  geom_smooth(aes(y = lower_bound, color = "Standard deviation"), linetype = "dashed") +
+  geom_smooth(aes(y = upper_bound, color = "Standard deviation"), linetype = "dashed") +
+  # Customizing colors to match Magalie
+  scale_color_manual(values = c("Mean" = "green", "Standard deviation" = "green")) +
+  scale_fill_manual(values = c("Standard deviation" = "lightgreen")) +
+  # Axis labels and title
+  labs(x = "Distance from PFU center (cm)", y = "Virospore PFU/cm²") +
+  theme_minimal(base_size = 14) +
+  theme(legend.title = element_blank(),
+    legend.position = "top",
+    plot.title = element_text(size = 14, face = "bold", hjust = -0.1)
+  )
+```
+
+```{r}
+# Plot including raw data 
+ggplot(summary_data, aes(x = Distance_from_PFU_cm)) +
+  geom_point(data = viro_dist, aes(y = Recovered_viral_PFU), color = "black", alpha = 0.6, size = 1.5) +
+  geom_ribbon(aes(ymin = lower_bound, ymax = upper_bound, fill = "Standard deviation"), alpha = 0.2, show.legend = FALSE) +
+  geom_smooth(aes(y = mean_VPFU, color = "Mean"), size = 1) +
+  geom_smooth(aes(y = lower_bound, color = "Standard deviation"), linetype = "dashed") +
+  geom_smooth(aes(y = upper_bound, color = "Standard deviation"), linetype = "dashed") +
+  # Customizing colors to match Magalie
+  scale_color_manual(values = c("Mean" = "green", "Standard deviation" = "green")) +
+  scale_fill_manual(values = c("Standard deviation" = "lightgreen")) +
+  # Axis labels and title
+  labs(x = "Distance from PFU center (cm)", y = "Virospores") +
+  # Theme adjustments for a clean look
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.title = element_blank(),
+    legend.position = "top",
+    plot.title = element_text(size = 14, face = "bold", hjust = -0.1)
+  )
+```
+
+```{r}
+ggplot(summary_data, aes(x = Distance_from_PFU_cm)) +
+  # Plotting raw data points with color based on 'Plaque'
+  geom_point(data = viro_dist, aes(x = Distance_from_PFU_cm, y = Recovered_VPFU_per_cm2, color = Plaque), 
+             alpha = 0.6, size = 1.5) +
+  # Adding the summary ribbon for standard deviation
+  geom_ribbon(aes(ymin = lower_bound, ymax = upper_bound, fill = "Standard deviation"), 
+              alpha = 0.2, show.legend = FALSE) +
+  # Adding smooth lines for mean and bounds
+  geom_smooth(aes(y = mean_VPFU, color = "Mean"), size = 1, se = FALSE) +
+  geom_smooth(aes(y = lower_bound, color = "Standard deviation"), linetype = "dashed", se = FALSE) +
+  geom_smooth(aes(y = upper_bound, color = "Standard deviation"), linetype = "dashed", se = FALSE) +
+  # Customizing colors
+  scale_color_manual(values = c("Mean" = "green", "Standard deviation" = "green")) +
+  scale_fill_manual(values = c("Standard deviation" = "lightgreen")) +
+  # Axis labels and title
+  labs(x = "Distance from PFU center (cm)", y = "Virospore PFU/cm²") +
+  theme_minimal(base_size = 14) +
+  theme(legend.title = element_blank(),
+        legend.position = "top",
+        plot.title = element_text(size = 14, face = "bold", hjust = -0.1)
+  )
+
+```
+
+
+```{r}
+myplot <- ggplot(summary_data, aes(x = Distance_from_PFU_cm)) +
+  # Plotting raw data points with color based on 'Plaque' type (A, B, C, D)
+  geom_point(data = viro_dist, aes(x = Distance_from_PFU_cm, y = Recovered_VPFU_per_cm2, color = Plaque), 
+             alpha = 0.6, size = 1.5) +
+  # Adding the summary ribbon for standard deviation
+  geom_ribbon(aes(ymin = lower_bound, ymax = upper_bound, fill = "Standard deviation"), 
+              alpha = 0.2, show.legend = FALSE) +
+  # Adding smooth lines for mean and bounds
+  geom_smooth(aes(y = mean_VPFU, color = "Mean"), size = 1, se = FALSE) +
+  geom_smooth(aes(y = lower_bound, color = "Standard deviation"), linetype = "dashed", se = FALSE) +
+  geom_smooth(aes(y = upper_bound, color = "Standard deviation"), linetype = "dashed", se = FALSE) +
+  # Customizing colors for each plaque (A, B, C, D) and summary data
+  scale_color_manual(values = c("Mean" = "green", "Standard deviation" = "green", 
+                                "A" = "blue", "B" = "red", "C" = "purple", "D" = "orange")) +
+  scale_fill_manual(values = c("Standard deviation" = "lightgreen")) +
+  # Axis labels and title
+  labs(x = "Distance from PFU center (cm)", y = "Virospore PFU/cm²") +
+  theme_minimal(base_size = 14) +
+  theme(legend.title = element_blank(),
+        legend.position = "top",
+        plot.title = element_text(size = 14, face = "bold", hjust = -0.1)
+  )
+
+myplot <- myplot + theme_minimal()
+ggsave("~/Desktop/my_plot.png", plot = myplot, width = 10, height = 6, dpi = 300)
+
+# Save the plot 
+#ggsave("~/Desktop/my_plot.png", plot = myplot, width = 10, height = 6, dpi = 300)
+
+```
+
+
+```{r}
+
+library(ggplot2)
+
+# Plot using geom_smooth with LOESS smoothing
+ggplot(summary_data, aes(x = Distance_from_PFU_cm, y = mean_VPFU)) +
+  # Smoothed line with ribbon for standard deviation
+  geom_smooth(aes(color = "Mean", fill = "Standard deviation"), 
+              method = "loess", span = 0.3, se = TRUE, 
+              size = 1, linetype = "solid") +
+  # Customizing colors to match the aesthetic
+  scale_color_manual(values = c("Mean" = "green")) +
+  scale_fill_manual(values = c("Standard deviation" = "lightgreen")) +
+  # Axis labels and title
+  labs(x = "Distance from center (µm)", y = "Recovered PFU") +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.title = element_blank(),
+    legend.position = "top",
+    plot.title = element_text(size = 14, face = "bold", hjust = -0.1)
+  ) +
+  ggtitle("C")
+
+```
+```{r}
+
+library(ggplot2)
+
+# Plot using geom_smooth with LOESS smoothing
+ggplot(summary_data, aes(x = Distance_from_PFU_cm, y = mean_VPFU)) +
+  # Smoothed line with ribbon for standard deviation
+  geom_smooth(aes(color = "Mean", fill = "Standard deviation"), 
+              method = "loess", span = 0.3, se = TRUE, 
+              size = 1, linetype = "solid") +
+  # Customizing colors to match the aesthetic
+  scale_color_manual(values = c("Mean" = "green")) +
+  scale_fill_manual(values = c("Standard deviation" = "lightgreen")) +
+  # Axis labels and title
+  labs(x = "Distance from PFU center (cm)", y = "Virospores") +
+  # Theme adjustments for a clean look
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.title = element_blank(),
+    legend.position = "top",
+    plot.title = element_text(size = 14, face = "bold", hjust = -0.1)
+  )
+
+```
+```{r}
+# Informed by the MATLAB code from Magalie et al
+library(ggplot2)
+
+# Assuming summary_data is your data frame and it contains the necessary columns
+ggplot(summary_data, aes(x = Distance_from_PFU_cm)) +
+  # Shaded area representing ± 1 standard deviation
+  geom_ribbon(aes(ymin = lower_bound, ymax = upper_bound, fill = "Standard deviation"), alpha = 0.2, show.legend = FALSE) +
+  # Solid line for the mean intensity
+  geom_smooth(aes(y = mean_VPFU, color = "Mean"), size = 1) +
+  # Dashed lines for ± 1 standard deviation
+  geom_smooth(aes(y = lower_bound, color = "Standard deviation"), linetype = "dashed") +
+  geom_smooth(aes(y = upper_bound, color = "Standard deviation"), linetype = "dashed") +
+  # Customizing colors to match the aesthetic
+  scale_color_manual(values = c("Mean" = "green", "Standard deviation" = "green")) +
+  scale_fill_manual(values = c("Standard deviation" = "lightgreen")) +
+  # Axis labels and title
+  labs(x = "Distance from PFU center (cm)", y = "Virospores") +
+  # Theme adjustments for a clean look
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.title = element_blank(),
+    legend.position = "top",
+    plot.title = element_text(size = 14, face = "bold", hjust = -0.1)
+  )
+
+# Getting lots of errors with this code probably because the span parameter is too small, or when there are fewer datapoints than DoF ; so we need to increase the span and use a different method for smoothing
+
+```
+
+
+```{r setup, include=FALSE}
+
+```
+
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library
+
+ggplot(summary_data, aes(x = Distance_from_PFU_cm)) +
+  # Shaded area representing ± 1 standard deviation
+  geom_ribbon(aes(ymin = lower_bound, ymax = upper_bound, fill = "Standard deviation"), alpha = 0.2, show.legend = FALSE) +
+  # Solid line for the mean intensity
+  geom_smooth(aes(y = mean_VPFU, color = "Mean"), method = "gam", formula = y ~ s(x, bs = "cs"), size = 1) +
+  # Dashed lines for ± 1 standard deviation
+  geom_smooth(aes(y = lower_bound, color = "Standard deviation"), method = "gam", formula = y ~ s(x, bs = "cs"), linetype = "dashed") +
+  geom_smooth(aes(y = upper_bound, color = "Standard deviation"), method = "gam", formula = y ~ s(x, bs = "cs"), linetype = "dashed") +
+  # Customizing colors to match the aesthetic
+  scale_color_manual(values = c("Mean" = "green", "Standard deviation" = "green")) +
+  scale_fill_manual(values = c("Standard deviation" = "lightgreen")) +
+  # Axis labels and title
+  labs(x = "Distance from PFU center (cm)", y = "Virospores") +
+  # Theme adjustments for a clean look
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.title = element_blank(),
+    legend.position = "top",
+    plot.title = element_text(size = 14, face = "bold", hjust = -0.1)
+  )
+```
+
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(mgcv) # For GAM smoothing
+
+# Assuming 'summary_data' contains columns: 'Distance_from_PFU_cm', 'mean_VPFU', 'lower_bound', 'upper_bound'
+ggplot(summary_data, aes(x = Distance_from_PFU_cm)) +
+  # Shaded area representing ± 1 standard deviation
+  geom_ribbon(aes(ymin = lower_bound, ymax = upper_bound, fill = "Standard deviation"), alpha = 0.2, show.legend = FALSE) +
+  # Solid line for the mean intensity
+  geom_smooth(aes(y = mean_VPFU, color = "Mean"), method = "gam", formula = y ~ s(x, bs = "cs"), linewidth = 1) +
+  # Dashed lines for ± 1 standard deviation
+  geom_smooth(aes(y = lower_bound, color = "Standard deviation"), method = "gam", formula = y ~ s(x, bs = "cs"), linetype = "dashed") +
+  geom_smooth(aes(y = upper_bound, color = "Standard deviation"), method = "gam", formula = y ~ s(x, bs = "cs"), linetype = "dashed") +
+  # Customizing colors to match the aesthetic
+  scale_color_manual(values = c("Mean" = "green", "Standard deviation" = "darkgreen")) +
+  scale_fill_manual(values = c("Standard deviation" = "lightgreen")) +
+  # Axis labels and title
+  labs(x = "Distance from PFU center (cm)", y = "Virospores") +
+  # Theme adjustments for a clean look
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.title = element_blank(),
+    legend.position = "top",
+    plot.title = element_text(size = 14, face = "bold", hjust = -0.1))
+```
+
+
+```{r setup, include=FALSE}
+# Trying again with GAM
+
+# Check to see if we are using the right formula
+# Example to visualize the data
+ggplot(summary_data, aes(x = Distance_from_PFU_cm, y = mean_VPFU)) +
+  geom_smooth(method = "lm", size = 1)
+
+
+library(ggplot2)
+library(mgcv) # For GAM smoothing
+
+ggplot(summary_data, aes(x = Distance_from_PFU_cm)) +
+  # Shaded area representing ± 1 standard deviation
+  geom_ribbon(aes(ymin = lower_bound, ymax = upper_bound, fill = "Standard deviation"), alpha = 0.2, show.legend = TRUE) +
+  # Solid line for the mean intensity
+  geom_smooth(aes(y = mean_VPFU, color = "Mean"), method = "gam", formula = y ~ s(x, bs = "cs", k = 3), linewidth = 1) +
+  geom_smooth(aes(y = lower_bound, color = "Standard deviation"), method = "gam", formula = y ~ s(x, bs = "cs", k = 3), linetype = "dashed") +
+  geom_smooth(aes(y = upper_bound, color = "Standard deviation"), method = "gam", formula = y ~ s(x, bs = "cs", k = 3), linetype = "dashed") +
+  # Customizing colors to match the aesthetic
+  scale_color_manual(values = c("Mean" = "green", "Standard deviation" = "darkgreen")) +
+  scale_fill_manual(values = c("Standard deviation" = "lightgreen")) +
+  # Axis labels and title
+  labs(x = "Distance from PFU center (cm)", y = "Virospores") +
+  # Theme adjustments for a clean look
+  theme_minimal(base_size = 14) +
+  theme(legend.title = element_blank(), legend.position = "top", plot.title = element_text(size = 14, face = "bold", hjust = -0.1))
+```
+
+
+```{r setup, include=TRUE}
+
+library(ggplot2)
+library(mgcv) # For GAM smoothing
+ggplot(summary_data, aes(x = Distance_from_PFU_cm)) +
+  geom_ribbon(aes(ymin = lower_bound, ymax = upper_bound, fill = "Standard deviation"), alpha = 0.2, show.legend = TRUE) +
+  geom_smooth(aes(y = mean_VPFU, color = "Mean"), method = "gam", formula = y ~ s(x, bs = "cs", k = 3), linewidth = 1) 
+geom_smooth(aes(y = lower_bound, color = "Standard deviation"), method = "gam", formula = y ~ s(x, bs = "cs", k = 3), linetype = "dashed") +
+  geom_smooth(aes(y = upper_bound, color = "Standard deviation"), method = "gam", formula = y ~ s(x, bs = "cs", k = 3), linetype = "dashed") +
+  scale_color_manual(values = c("Mean" = "green", "Standard deviation" = "darkgreen")) +
+  scale_fill_manual(values = c("Standard deviation" = "lightgreen")) +
+  labs(x = "Distance from PFU center (cm)", y = "Virospores") +
+  theme_minimal(base_size = 14) +
+  theme(legend.title = element_blank(), legend.position = "top", plot.title = element_text(size = 14, face = "bold", hjust = -0.1))

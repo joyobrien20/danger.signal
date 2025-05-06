@@ -1,0 +1,604 @@
+---
+title: "Danger signals and sporulation"
+author: "Jay T. Lennon and Joy O'Brien"
+date: "2025-02-05"
+output: html_document
+---
+
+## Clear workspace and set directory
+```{r setup}
+rm(list=ls())
+setwd("~/GitHub/danger.signal/scripts/GrowthCurves")
+knitr::opts_knit$set(root.dir = "~/GitHub/danger.signal/scripts/GrowthCurves")
+
+```
+
+## Load packages and functions
+```{r}
+require("png")
+require("dplyr")
+require("grid")
+require("gtools")
+require("nlme")
+require("MuMIn")
+require("bbmle")
+source("~/GitHub/danger.signal/scripts/GrowthCurves/bin/modified_Gomp_diagnostic3.R")
+sem <- function(x) sqrt(var(x)/length(x))
+cv <- function(x) 100*( sd(x)/mean(x))
+```
+
+# Load data
+```{r}
+# Load raw fluorescence data
+
+#gfp <- read.csv("~/GitHub/danger.signal/scripts/GrowthCurves/data/20250205_spo0A_gfp_reads.csv")
+
+# Below is the data with the WT controls from previous 11/22/24 experiment, note that these samples were run at 34C while the rest of the data was run at 37C, using this data is simply a test to see if subtracting WT cell fluorescence values will get rid of the "u" shape of our data in the beginning 
+
+#gfp <- read.csv("~/GitHub/danger.signal/scripts/GrowthCurves/data/20250210_spo0A_gfp_reads_WTcont.csv")
+# Remove data from empty wells
+#gfp<- subset(gfp, select = -c(A2, A3, A5, A6, A8, A9, A11, A12, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, D2, D3, D5, D6, D8, D9, D11, D12, E1, E2, E3, E4, E5, E6, E7, E8, E9, E10, E11, E12, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, G2, G3, G5, G6, G8, G9, G11, G12, H1, H2, H3, H4, H5, H6, H7, H8, H9, H10, H11, H12))
+
+
+gfp <- read.csv("~/GitHub/danger.signal/scripts/GrowthCurves/data/20250213_spo0agfp_gfp_reads.csv")
+# Remove data from empty wells (WT dataset)
+# gfp <- subset(gfp, select = -c(A2, A3, A5, A6, A8, A9, A11, A12, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, D2, D3, D5, D6, D8, D9, D11, D12, E1, E2, E3, E4, E5, E6, E7, E8, E9, E10, E11, E12, F1, F2, F3, F4, F5, F6, F7, F8, F9, F11, F12, G2, G3, G5, G6, G8, G9, G11, G12, H2, H3, H5, H6, H7, H8, H9, H10, H11, H12))
+
+# Remove data from empty wells (20250213 plate)
+gfp <- subset(gfp, select = -c(A2, A3, A5, A6, A8, A9, A11, A12, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, D2, D3, D5, D6, D8, D9, D11, D12, E1, E2, E3, E4, E5, E6, E7, E8, E9, E10, E11, E12, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, G2, G3, G5, G6, G8, G9, G11, G12, H1, H2, H3, H4, H5, H6, H7, H8, H9, H10, H11, H12))
+
+
+
+# For the 20240213 data where two different media are used, we need to do it twice
+DSM_columns_to_adjust <- c("A1","A7","A10","D1","D4","D7")
+cDSM_columns_to_adjust <- c("A4", "D10", "G1", "G4", "G7", "G10")
+
+gfp <- gfp
+gfp[DSM_columns_to_adjust] <- sweep(gfp[DSM_columns_to_adjust], 1, gfp$A1, "-")
+
+gfp <- gfp
+gfp[cDSM_columns_to_adjust] <- sweep(gfp[cDSM_columns_to_adjust], 1, gfp$A4, "-")
+
+# Subtract background fluorescence from LB media 
+# columns_to_adjust <- c()
+# Subtract the value for the LB blank from the specified columns (samples)
+#gfp <- gfp
+#gfp[columns_to_adjust] <- sweep(gfp[columns_to_adjust], 1, gfp$A1, "-")
+
+# Print the adjusted data frame
+print(gfp)
+
+# Change times to numeric
+gfp$Time <- as.numeric(sub("^(\\d+):(\\d+).*", "\\1.\\2", gfp $Time))
+head(gfp, header = T)
+
+## Removing well G7 because it's an outlier
+#gfp.BBveg <- gfp.BBveg %>% select(-G7)
+
+# Create detrended data by subtracting control GFP reporter fluorescence
+
+#library(dplyr)
+
+# Step 1:  Identify the control wells and the experimental wells
+#control_wells <- c("A4", "A7")
+#exp_wells <- c("A10", "D1", "D4", "D7", "D10", "G1", "G4", "G7", "G10")
+
+# Obtain the average of the control wells for each time point in the time series
+#gfp <- gfp %>%
+  #mutate(Control_Avg = rowMeans(select(., all_of(control_wells)), na.rm = TRUE))
+
+# Subtract the control average from the experimental wells
+#gfp_detrend <- gfp %>%
+  #mutate(across(all_of(exp_wells), ~ . - Control_Avg, .names = "{.col}_detrend")) %>%
+  #select(Time, Control_Avg, everything())  # Keep Time and new corrected values
+
+
+# View the result
+#print(gfp_detrend)
+
+# Change times to numeric
+#gfp_detrend$Time <- as.numeric(sub("^(\\d+):(\\d+).*", "\\1.\\2", gfp_detrend $Time))
+#head(gfp_detrend, header = T)
+
+# Subsetting gfp_detrend so that we can run through the model analysis
+#gfp.new <- gfp_detrend %>%
+  #select(Time, "A1","A10_detrend", "D1_detrend", "D4_detrend", "D7_detrend", "D10_detrend", "G1_detrend", "G4_detrend", "G7_detrend", "G10_detrend")
+
+# Remove _detend from the well names
+#colnames(gfp.new) <- gsub("_detrend", "", colnames(gfp.new))
+```
+
+
+```{r}
+# # Creating detrended data by subtracting WT control cell fluorescence 
+# library(dplyr)
+# 
+# # Step 1:  Identify the WILDTYPE control wells and the experimental wells
+# control_wells <- c("F10", "H1", "H4")
+# exp_wells <- c("A4", "A7" ,"A10", "D1", "D4", "D7", "D10", "G1", "G4", "G7", "G10")
+# 
+# # Obtain the average of the WT control wells for each time point in the time series
+# gfp <- gfp %>%
+#   mutate(Control_Avg = rowMeans(select(., all_of(control_wells)), na.rm = TRUE))
+# 
+# # Subtract the control average from the experimental wells
+# gfp_cont_detrend <- gfp %>%
+#   mutate(across(all_of(exp_wells), ~ . - Control_Avg, .names = "{.col}_detrend")) %>%
+#   select(Time, Control_Avg, everything())  # Keep Time and new corrected values
+# 
+# 
+# # View the result
+# print(gfp_cont_detrend)
+# 
+# # Subsetting gfp_detrend so that we can run through the model analysis
+# gfp.new <- gfp_cont_detrend %>%
+#   select(Time, "A1","A4_detrend", "A7_detrend", "A10_detrend", "D1_detrend", "D4_detrend", "D7_detrend", "D10_detrend", "G1_detrend", "G4_detrend", "G7_detrend", "G10_detrend")
+# 
+# # Remove _detend from the well names
+# colnames(gfp.new) <- gsub("_detrend", "", colnames(gfp.new))
+
+
+
+```
+
+```{r}
+# Rescale the data before transforming
+rescale_minmax <- function(x, lower = 1, upper = 10) {
+  return(lower + (x - min(x)) / (max(x) - min(x)) * (upper - lower))
+}
+# Trying Z-score normalization/rescaling
+#zscore_normalization <- function(x) {
+ # return((x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE))
+#}
+
+# Specify columns to scale
+columns_to_scale <- c("A7", "A10", "D1", "D4", "D7", "D10", "G1", "G4", "G10")
+gfp[columns_to_scale] <- lapply(gfp[columns_to_scale], rescale_minmax)
+
+# Log10 transforming the fluorescence data before analysis? 
+#gfp.new[, 3:11] <- apply(gfp.new[, 3:11], 2, log10) # this is for working with the dataset when the data is de-trended from the reporter controls and the WT controls
+#gfp[, 4:14] <- apply(gfp[, 4:14], 2, log10) # this the code to use when working with dataset that is not de-trended
+
+# Notes for de-trended dataset (detrended from WT) rescaled data w log transforming allows for too many NaNs-- proceed running model without log transformation
+```
+
+
+# Group wells by treatment
+```{r}
+# values refer to wells as identified by column numbers, I think this is where we can group wells into treatments 
+#gfp.BBphage <-  gfp.new[,c(1,3,4,5)] #when the temp column is included
+#gfp.HTphage <-  gfp.new[,c(1,6,7,8)]
+#gfp.BBveg <-  gfp.new[,c(1,9,10,11)]
+
+# gfp.controls <- gfp[,c(1,4,5)] # when running with WT data with temp column included
+# gfp.BBphage <- gfp[,c(1,6,7,8)]
+# gfp.HTphage <- gfp[,c(1,9,10,12)]
+# gfp.BBveg <- gfp[,c(1,13,14,15)]
+
+# When working with the 20250213 plate
+gfp.DSM.controls <- gfp[,c(1,5,6)]
+gfp.DSM.BBphage <- gfp[,c(1,7,8,9)]
+gfp.cDSM.BBphage <- gfp[,c(1,12,13,14)]
+gfp.cDSM.controls <- gfp[,c(1,10,11)]
+## Removing well G7 because it's an outlier
+#gfp.BBveg <- gfp.BBveg %>% select(-G7)
+
+#gfp.controls <- gfp.new[,c(1,3,4)] # when running with WT data without temp column included
+#gfp.BBphage <- gfp.new[,c(1,5,6,7)]
+#gfp.HTphage <- gfp.new[,c(1,8,9,10)]
+#gfp.BBveg <- gfp.new[,c(1,11,12,13)]
+
+# Find the mean for each sample type (plotting the mean for the reps for meeting with Joshua)
+# Doing this for DSM samples as well
+gfp.DSM.controls_avg <- gfp.DSM.controls %>%
+   mutate(mean_gfp = rowMeans(select(., A7, A10), na.rm = TRUE)) %>%
+   select(Time, mean_gfp)
+
+gfp.DSM.BBphage_avg <- gfp.DSM.BBphage %>%
+   mutate(mean_gfp = rowMeans(select(., D1, D4, D7), na.rm = TRUE)) %>%
+   select(Time, mean_gfp)
+# 
+# gfp.HTphage_avg <- gfp.HTphage %>%
+#   mutate(mean_gfp = rowMeans(select(., D7, D10, G1), na.rm = TRUE)) %>%
+#   select(Time, mean_gfp)
+# 
+# gfp.BBveg_avg <- gfp.BBveg %>%
+#   mutate(mean_gfp = rowMeans(select(., G4, G10), na.rm = TRUE)) %>%
+#   select(Time, mean_gfp)
+```
+
+```{r}
+# Remove the last 20 timepoints from the data to get rid of the "death" phase before running model
+#gfp.BBphage <- gfp.BBphage[1:(nrow(gfp.BBphage)-20), ]
+#gfp.HTphage <- gfp.HTphage[1:(nrow(gfp.HTphage)-20), ]
+#gfp.BBveg <- gfp.BBveg[1:(nrow(gfp.BBveg)-20), ]
+#gfp.controls <- gfp.controls[1:(nrow(gfp.controls)-20), ]
+
+# Remove the first 10 timepoints from the dataset
+# gfp.BBphage <- gfp.BBphage[-(1:10), ]
+# gfp.HTphage <- gfp.HTphage[-(1:10), ]
+# gfp.BBveg <- gfp.BBveg[-(1:10), ]
+# gfp.controls <- gfp.controls[-(1:10), ]
+
+# Will run the model and have .2 as the output for this above edit
+# .3 is the log10 transformed data with the last 10 time points taken off 
+# .4 is the log10 transform with -10 last datapoints above but removed well G7 because Nan after log transform
+# 5. is the rescaled data without the log10 transformation but the last 10 timepoints removed
+# .6 is the rescaled data without the log10 transofmration but the last 20 timepoints removed 
+# .7 includes the controls, and because of that the data is not detrended
+# .8 the data is rescaled via zscore normalization and is not log10 transformed (includes last 20 timepoints removed, the controls included, de-trended)
+# .9 the data is not detrended, is rescaled min-max, log10 transformed, controls included, has last 20 timepoints removed and the first 15
+
+
+# .10 is the 20250225 data but I did the following to it: added WT controls from a previous experiment (34C), subtracted LB blank, detrended data with average of WT fluorescence data, re-scaled but did not log10 transform
+# .11 is the same as .10 except the last 20 datapoints are not truncated
+
+#.12 includes all of the end data points (last 20 are not truncated, but the first 10 are truncated)
+
+# .13 is including the GFP positive controls which somehow were not included before (?)--I think I was workig on gfp instead of gfp.new!! This is what the model looks like if you subtract the WT controls (did not do it properly in .11)
+
+# .14 Okay what if we didn't subtract the WT average and still re-scaled # this is how you recreate .11
+
+#. 15 running the model on the average fluorescence values of the replicates for each treatment; doing this on the iteration of the .11 model
+
+# cDSM.1 and DSM.1 are 20250213 data
+# DSM.2 and DSM.controls.2 are running Gompertz on the average (to send to Joshua)
+# Removing well G7 because NaN
+#gfp.BBveg <- gfp.BBveg %>% select(-G7)
+```
+
+# Run Gompertz (only need to run once then comment out)
+
+```{r}
+setwd("~/GitHub/danger.signal/scripts/GrowthCurves/bin")
+gfp.DSM.controls_avg.2 <- growth.modGomp(input = gfp.DSM.controls_avg, output.name = "gfp.DSM.controls_avg.2.parms",
+                 synergy = F, temp = F, smooth = T, trim = T)
+#gfp.cDSM.controls.1 <- growth.modGomp(input = gfp.cDSM.controls,output.name = "gfp.cDSM.controls.1.parms",
+                  #synergy = F, temp = F, smooth = T, trim = T)
+gfp.DSM.BBphage_avg.2  <- growth.modGomp(input = gfp.DSM.BBphage_avg, output.name = "gfp.DSM.BBphage_avg.2.parms",
+                 synergy = F, temp = F, smooth = T, trim = T)
+#gfp.cDSM.BBphage.1 <- growth.modGomp(input = gfp.cDSM.BBphage, output.name = "gfp.cDSM.BBphage.1.parms",
+               #synergy = F, temp = F, smooth = T, trim = T)
+```
+
+# Retrieve output parameters from growth model
+```{r}
+gfp.DSM.controls_avg.out.2 <- read.table("~/GitHub/danger.signal/scripts/GrowthCurves/output/gfp.DSM.controls_avg.2.parms.txt", sep = ",", header=TRUE)
+#gfp_HTphage.out.11 <- read.table("~/GitHub/danger.signal/scripts/GrowthCurves/output/gfp.HTphage.11.parms.txt", sep = ",", header=TRUE)
+gfp.DSM.BBphage_avg.out.2 <- read.table("~/GitHub/danger.signal/scripts/GrowthCurves/output/gfp.DSM.BBphage_avg.2.parms.txt", sep = ",", header=TRUE)
+#gfp_controls.out.11 <- read.table("~/GitHub/danger.signal/scripts/GrowthCurves/output/gfp.controls.11.parms.txt", sep = ",", header=TRUE)
+```
+# Retrieve output params (20250213 plate)
+```{r}
+gfp_DSM_controls.out.1 <- read.table("~/GitHub/danger.signal/scripts/GrowthCurves/output/gfp.DSM.controls.1.parms.txt", sep = ",", header=TRUE)
+gfp_cDSM_controls.out.1 <- read.table("~/GitHub/danger.signal/scripts/GrowthCurves/output/gfp.cDSM.controls.1.parms.txt", sep = ",", header=TRUE)
+gfp_DSM_BBphage.out.1 <- read.table("~/GitHub/danger.signal/scripts/GrowthCurves/output/gfp.DSM.BBphage.1.parms.txt", sep = ",", header=TRUE)
+gfp_cDSM_BBphage.out.1 <- read.table("~/GitHub/danger.signal/scripts/GrowthCurves/output/gfp.cDSM.BBphage.1.parms.txt", sep = ",", header=TRUE)
+```
+
+```{r}
+# Comparing param outputs from different models 
+gfp_BBphage.out.12 <- read.table("~/GitHub/danger.signal/scripts/GrowthCurves/output/gfp.BBphage.12.parms.txt", sep = ",", header=TRUE)
+gfp_HTphage.out.12 <- read.table("~/GitHub/danger.signal/scripts/GrowthCurves/output/gfp.HTphage.12.parms.txt", sep = ",", header=TRUE)
+gfp_BBveg.out.12 <- read.table("~/GitHub/danger.signal/scripts/GrowthCurves/output/gfp.BBveg.12.parms.txt", sep = ",", header=TRUE)
+gfp_controls.out.12 <- read.table("~/GitHub/danger.signal/scripts/GrowthCurves/output/gfp.controls.12.parms.txt", sep = ",", header=TRUE)
+```
+
+# Retrieve experimental design file
+```{r}
+treats.gfp <- read.csv("~/GitHub/danger.signal/scripts/GrowthCurves/data/20250213_treatments_spo0A_gfp.csv")
+#treats.nm.1[rep(seq_len(nrow(treats.nm.1)), each = 19), ]
+```
+
+# Pick Up here to run stats on the 20250213 data 
+```{r}
+library(dplyr)
+library(tidyr)
+
+# Remove all other parameters except lag time
+gfp_DSM_BBphage.out.1_lag <- gfp_DSM_BBphage.out.1 %>% select(-b0, -b0.se, -A, -A.se, -umax, -umax.se, -RSME, -CV, -outlier)
+#gfp_cDSM_BBphage.out.1_lag <- gfp_cDSM_BBphage.out.1 %>% select(-b0, -b0.se, -A, -A.se, -umax, -umax.se, -RSME, -CV, -outlier)
+gfp_DSM_controls.out.1_lag <- gfp_DSM_controls.out.1 %>% select(-b0, -b0.se, -A, -A.se, -umax, -umax.se, -RSME, -CV, -outlier)
+#gfp_cDSM_controls.out.1_lag <- gfp_cDSM_controls.out.1 %>% select(-b0, -b0.se, -A, -A.se, -umax, -umax.se, -RSME, -CV, -outlier)
+
+# Create a named list of the datasets
+#datasets_lag <- list(
+  #DSM_BBphage = gfp_DSM_BBphage.out.1_lag,
+  #cDSM_BBphage = gfp_cDSM_BBphage.out.1_lag,
+  #DSM_Controls = gfp_DSM_controls.out.1_lag,
+  #cDSM_controls = gfp_cDSM_controls.out.1_lag
+#)
+
+datasets_lag <- list(
+  DSM_BBphage = gfp_DSM_BBphage.out.1_lag,
+  DSM_Controls = gfp_DSM_controls.out.1_lag
+)
+# Bind them together with a new 'Sample' column
+merged_lag_data <- bind_rows(datasets_lag, .id = "Sample")
+
+# View the merged data
+head(merged_lag_data)
+
+# Add metadata to dataset
+merged_lag_metadata <- merged_lag_data %>%
+  left_join(treats.gfp, by = "Curve")
+
+# Remove curve G7 the model failed on it
+#merged_lag_metadata <- merged_lag_metadata %>%
+  #filter(Curve != "G7")
+
+# Rename Sample to treatment
+merged_lag_metadata <- merged_lag_metadata %>%
+  rename(Treatment = Sample)
+```
+Running stats on 20250213 data
+```{r}
+# Checking assumptions for ANOVA
+shapiro.test(merged_lag_metadata$L) # for normality check, p-value = the data is not normally distributed
+
+# Homogeneity of variance Levene's test
+library(car)
+# Troubleshoot and re-run
+merged_lag_metadata$Treatment <- as.factor(merged_lag_metadata$Treatment)
+leveneTest(L ~ Treatment, data = merged_lag_metadata) # p-value is greater than 0.05, meaning that the variances are not significantly different from one another and we can proceed with Anova
+
+
+# Perform ANOVA
+anova_result <- aov(L ~ Treatment, data = merged_lag_metadata)
+summary(anova_result)
+
+TukeyHSD(anova_result)
+
+# Okay since we have significant values for Shapiro Wilks and Levenes, we need to proceed with Kruskal Wallis
+
+kruskal.test(L ~ Treatment, data = merged_lag_metadata)
+library(FSA)
+dunn <- dunnTest(L ~ Treatment, data = merged_lag_metadata, method = "bh")
+
+```
+
+```{r}
+# Plot results
+library(ggplot2)
+library(ggsignif)
+library(ggpubr)
+
+# Create a boxplot with ggplot2
+ggplot(merged_lag_metadata, aes(x = Treatment, y = L)) +
+  geom_boxplot(fill = "lightgreen", color = "black") + 
+  scale_y_continuous(limits = c(20,22)) + # Boxplot with fill and border
+  stat_summary(fun.data = "mean_cl_boot", geom = "errorbar", width = 0.2) +  # Error bars (mean with CI)
+  labs(title = "", x = "Treatment Group", y = "GFP onset time (h)") +  # Labels
+  theme_minimal()  # Clean theme
+
+# Adding significance codes -- pick up here on Feb. 11 looking at significance codes
+#plot + geom_signif(
+  #comparisons = list(c("BBveg", "BBphage"), c("Controls", "BBphage"), c("HTphage", "BBphage")),
+  #map_signif_level = TRUE,
+  #test = "t.test"  # Use a t-test (or "wilcox.test" for non-parametric data)
+#)
+
+#compare_means(L ~ Treatment, data = merged_lag_metadata, method = "t.test")
+
+```
+
+# Setting up the data for stats to run on the .14 model
+```{r}
+library(dplyr)
+library(tidyr)
+
+# Remove all other parameters except lag time
+gfp_BBphage.out.14_lag <- gfp_BBphage.out.14 %>% select(-b0, -b0.se, -A, -A.se, -umax, -umax.se, -RSME, -CV, -outlier)
+gfp_BBveg.out.14_lag <- gfp_BBveg.out.14 %>% select(-b0, -b0.se, -A, -A.se, -umax, -umax.se, -RSME, -CV, -outlier)
+gfp_controls.out.14_lag <- gfp_controls.out.14 %>% select(-b0, -b0.se, -A, -A.se, -umax, -umax.se, -RSME, -CV, -outlier)
+gfp_HTphage.out.14_lag <- gfp_HTphage.out.14 %>% select(-b0, -b0.se, -A, -A.se, -umax, -umax.se, -RSME, -CV, -outlier)
+
+
+# Create a named list of the datasets
+datasets_lag <- list(
+  BBphage = gfp_BBphage.out.14_lag,
+  BBveg = gfp_BBveg.out.14_lag,
+  Controls = gfp_controls.out.14_lag,
+  HTphage = gfp_HTphage.out.14_lag
+)
+
+# Bind them together with a new 'Sample' column
+merged_lag_data <- bind_rows(datasets_lag, .id = "Sample")
+
+# View the merged data
+head(merged_lag_data)
+
+# Add metadata to dataset
+merged_lag_metadata <- merged_lag_data %>%
+  left_join(treats.gfp, by = "Curve")
+
+# Remove curve G7 the model failed on it
+merged_lag_metadata <- merged_lag_metadata %>%
+  filter(Curve != "G7")
+
+# Rename Sample to treatment
+merged_lag_metadata <- merged_lag_metadata %>%
+  rename(Treatment = Sample)
+
+```
+
+```{r}
+# Obtain relative % reduction of onset time by taking every rep observation from a treatment and using it to 
+# estimate percent change in onset by comparing to the control 
+
+# Step 1: Calculate mean onset time for the control group
+control_mean <- merged_lag_metadata %>%
+  filter(Treatment == "Controls") %>%
+  summarise(control_mean = mean(L))
+
+# Step 2: Calculate percent reduction for each treatment group
+#merged_lag_metadata <- merged_lag_metadata %>%
+  #left_join(control_mean, by = character()) %>%
+  #group_by(Treatment) %>%
+  #mutate(percent_reduction = ifelse(Treatment == "Controls", 0, (control_mean - L) / control_mean * 100)) %>%
+  #ungroup()
+
+
+# Now plot
+ggplot(merged_lag_metadata, aes(x = Treatment, y = percent_reduction, fill = Treatment)) +
+  geom_boxplot() +
+  stat_summary(fun.data = "mean_cl_boot", geom = "errorbar", width = 0.2) +  # Error bars (mean with CI)
+  labs(title = "Percent Reduction in Onset Time of Spo0A GFP by Treatment",
+       x = "Treatment Group",
+       y = "Percent Reduction (%)") +
+  theme_minimal() +  # Clean theme
+  scale_fill_brewer(palette = "Set3")  # Optional: Change colors using a palette
+
+```
+
+```{r}
+# Checking assumptions for ANOVA
+shapiro.test(merged_lag_metadata$L) # for normality check, p-value = the data is not normally distributed
+
+# Homogeneity of variance Levene's test
+library(car)
+# Troubleshoot and re-run
+merged_lag_metadata$Treatment <- as.factor(merged_lag_metadata$Treatment)
+leveneTest(L ~ Treatment, data = merged_lag_metadata) # p-value is greater than 0.05, meaning that the variances are not significantly different from one another and we can proceed with Anova
+
+
+# Perform ANOVA
+anova_result <- aov(L ~ Treatment, data = merged_lag_metadata)
+summary(anova_result)
+
+TukeyHSD(anova_result)
+```
+
+```{r}
+# Plot results
+library(ggplot2)
+library(ggsignif)
+library(ggpubr)
+
+
+# Create a boxplot with ggplot2
+ggplot(merged_lag_metadata, aes(x = Treatment, y = L)) +
+  geom_boxplot(fill = "lightgreen", color = "black") +  # Boxplot with fill and border
+  stat_summary(fun.data = "mean_cl_boot", geom = "errorbar", width = 0.2) +  # Error bars (mean with CI)
+  labs(title = "Onset of Spo0A GFP expression by treatment (lag time)", x = "Treatment Group", y = "Lag Time (h)") +  # Labels
+  theme_minimal()  # Clean theme
+
+# Adding significance codes -- pick up here on Feb. 11 looking at significance codes
+#plot + geom_signif(
+  #comparisons = list(c("BBveg", "BBphage"), c("Controls", "BBphage"), c("HTphage", "BBphage")),
+  #map_signif_level = TRUE,
+  #test = "t.test"  # Use a t-test (or "wilcox.test" for non-parametric data)
+#)
+
+#compare_means(L ~ Treatment, data = merged_lag_metadata, method = "t.test")
+
+```
+
+```{r}
+# Perform a sanity check to see if the onset of sporulation is consistent with the sample entering stationary phase
+library(dplyr)
+library(tidyr)
+# Load OD600 data
+OD600 <- read.csv("~/GitHub/danger.signal/scripts/GrowthCurves/data/20250205_spo0A_gfp_OD_reads.csv")
+
+# Remove data from empty wells
+OD600<- subset(OD600, select = -c(A2, A3, A5, A6, A8, A9, A11, A12, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, D2, D3, D5, D6, D8, D9, D11, D12, E1, E2, E3, E4, E5, E6, E7, E8, E9, E10, E11, E12, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, G2, G3, G5, G6, G8, G9, G11, G12, H1, H2, H3, H4, H5, H6, H7, H8, H9, H10, H11, H12))
+
+# Remove Temp. from the dataset
+OD600 <- OD600 %>% filter(Temp. != "Temp.")
+
+# Change times to numeric
+OD600$Time <- as.numeric(sub("^(\\d+):(\\d+).*", "\\1.\\2", OD600 $Time))
+head(OD600, header = T)
+
+# Subtract background absorbance from LB media 
+columns_to_adjust <- c("A1","A4","A7","A10","D1","D4","D7","D10","G1","G4", "G7", "G10")
+ 
+# Subtract the value for the LB blank from the specified columns (samples)
+OD600 <- OD600
+OD600[columns_to_adjust] <- sweep(OD600[columns_to_adjust], 1, OD600$A1, "-")
+```
+
+```{r}
+# Re-scale the data
+#rescale_minmax <- function(x, lower = 1, upper = 10) {
+  #return(lower + (x - min(x)) / (max(x) - min(x)) * (upper - lower))
+#}
+
+OD600 <- OD600 %>%
+  mutate(across(c(A4, A7, A10, D1, D4, D7, D10, G1, G4, G7, G10), ~ (. - min(., na.rm = TRUE)) / (max(., na.rm = TRUE) - min(., na.rm = TRUE)), 
+                .names = "{.col}_scaled"))
+#columns_to_scale <- c("A4", "A7", "A10", "D1", "D4", "D7", "D10", "G1", "G4", "G10")
+#OD600[columns_to_scale] <- lapply(OD600[columns_to_scale], rescale_minmax)
+
+# Select the scaled data
+# Subsetting gfp_detrend so that we can run through the model analysis
+OD600.new <- OD600 %>%
+  select(Time, "A1","A4_scaled", "A7_scaled", "A10_scaled", "D1_scaled", "D4_scaled", "D7_scaled", "D10_scaled", "G1_scaled", "G4_scaled", "G7_scaled", "G10_scaled")
+
+# Remove _detend from the well names
+colnames(OD600.new) <- gsub("_scaled", "", colnames(OD600.new))
+
+# Log transform the data
+#OD600.new[, 3:13] <- apply(OD600.new[, 3:13], 2, log10)
+```
+
+
+```{r}
+# Group wells by treatment
+# values refer to wells as identified by column numbers, I think this is where we can group wells into treatments 
+OD600.BBphage <-  OD600.new[,c(1,5,6,7)] # Use these combinations when running OD600.new
+OD600.HTphage <-  OD600.new[,c(1,8,9,10)]
+OD600.BBveg <-  OD600.new[,c(1,11,12,13)]
+OD600.controls <- OD600.new[,c(1,3,4)]
+
+# Find the mean for each sample type (plotting the mean for the reps for meeting with Joshua)
+OD600.controls_avg <- OD600.controls %>%
+  mutate(mean_OD600 = rowMeans(select(., A4, A7), na.rm = TRUE)) %>%
+  select(Time, mean_OD600)
+
+OD600.BBphage_avg <- OD600.BBphage %>%
+  mutate(mean_OD600 = rowMeans(select(., A10, D1, D4), na.rm = TRUE)) %>%
+  select(Time, mean_OD600)
+
+OD600.HTphage_avg <- OD600.HTphage %>%
+  mutate(mean_OD600 = rowMeans(select(., D7, D10, G1), na.rm = TRUE)) %>%
+  select(Time, mean_OD600)
+
+OD600.BBveg_avg <- OD600.BBveg %>%
+  mutate(mean_OD600 = rowMeans(select(., G4, G10), na.rm = TRUE)) %>%
+  select(Time, mean_OD600)
+
+# # Remove the last 100 timepoints from the data to get rid of the "death" phase before running model
+OD600.BBphage_avg <- OD600.BBphage_avg[1:(nrow(OD600.BBphage_avg)-50), ]
+OD600.HTphage_avg <- OD600.HTphage_avg[1:(nrow(OD600.HTphage_avg)-50), ]
+OD600.BBveg_avg <- OD600.BBveg_avg[1:(nrow(OD600.BBveg_avg)-50), ]
+OD600.controls_avg <- OD600.controls_avg[1:(nrow(OD600.controls_avg)-50), ]
+
+# Running Gompertz model iterations
+# 0.1 is running the data raw and was not corrected for backgrround absorbance
+# 0.2 is the data corrected for background absorbance
+# 0.3 is the data corrected for background absorbance and re-scaling via min max -- probaly not the best idea and didn't do much 
+# 0.4 rescaling data different (min max 0 to 1 range) -- need to rerun with the scaled data
+# log transforming data from the previous 0.4 run -- created INF, 
+# O.5 is running OD with last 50 time points truncated
+# 0.6 running the model on averaged OD data across reps, no truncation
+# 0.7 runnind the model on average OD data truncated last 50 time points
+```
+
+# Run Gompertz (only need to run once then comment out)
+
+```{r}
+setwd("~/GitHub/danger.signal/scripts/GrowthCurves/bin")
+OD600.BBphage.7 <- growth.modGomp(input = OD600.BBphage_avg, output.name = "OD600.BBphage.7.parms",
+                 synergy = F, temp = F, smooth = T, trim = T)
+OD600.HTphage.7 <- growth.modGomp(input = OD600.HTphage_avg, output.name = "OD600.HTphage.7.parms",
+                 synergy = F, temp = F, smooth = T, trim = T)
+OD600.BBveg.7  <- growth.modGomp(input = OD600.BBveg_avg, output.name = "OD600.BBveg.7.parms",
+                synergy = F, temp = F, smooth = T, trim = T)
+OD600.controls.7 <- growth.modGomp(input = OD600.controls_avg, output.name = "OD600.controls.7.parms",
+                synergy = F, temp = F, smooth = T, trim = T)
+```
+
+
+```{r}

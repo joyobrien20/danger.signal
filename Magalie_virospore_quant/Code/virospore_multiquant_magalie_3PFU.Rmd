@@ -1,0 +1,252 @@
+---
+title: "Virospore annulus multi-quant for Magalie"
+author: "Joy O'Brien"
+date: "2025-03-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+setwd("~/GitHub/VirosporeQuant/Magalie_virospore_quant")
+```
+
+```{r}
+# Load Library
+library(readxl)
+library(dplyr)
+library(tidyr)  
+library(vegan)
+library(ggplot2)
+library(mgcv)
+
+# Read in data
+viro_quant <- read_excel("~/GitHub/VirosporeQuant/Magalie_virospore_quant/Data/Annulus_Quant/20250329_2253_viromultiquant_magalie.xlsx", sheet = "raw_data")
+```
+
+# Calculate CFU, PFUs, and VPFUs per mL
+```{r}
+# Calculate CFU and PFU of the original suspension which is # of PFU or CFU / vol plated x total dilution factor
+#viro_quant$Free_PFU_mL_1 <- viro_quant$Free_PFU_10e1 / (0.1 * (10^-1))
+viro_quant$Free_PFU_mL_2 <- viro_quant$Free_PFU_10e2/ (0.1 * (10^-2))
+
+# Uninfected spores
+#viro_quant$Spores_CFU_mL_1 <- viro_quant$Spores_CFU_10e1 / (0.1 * (10^-1))
+viro_quant$Spores_CFU_mL_2 <- viro_quant$Spores_CFU_10e2 / (0.1 * (10^-2))
+
+# VPFU
+viro_quant$VPFU_mL_1 <- viro_quant$VPFU_10e1 / (0.1 * (10^-1))
+viro_quant$VPFU_mL_2 <- viro_quant$VPFU_10e2 / (0.1 * (10^-2))
+
+
+```
+
+1B. Calculate CFU/mL and PFU/mL per stock solution for each sample
+```{r}
+viro_quant$Free_PFU_stock <- viro_quant$Free_PFU_mL_2 * 1.5
+#viro_quant$Free_PFU_5stock <- viro_quant$Free_PFU_mL_5rep * 1.5
+#viro_quant$Free_PFU_7stock <- viro_quant$Free_PFU_mL_7rep * 1.5
+
+viro_quant$Spores_CFU_stock <- viro_quant$Spores_CFU_mL_2 * 1.5
+#viro_quant$Spores_CFU_5stock <- viro_quant$Spores_CFU_mL_5rep * 1.5
+#viro_quant$Spores_CFU_7stock <- viro_quant$Spores_CFU_mL_7rep * 1.5
+
+viro_quant$VPFU_stock <- viro_quant$VPFU_mL_1 * 1.5
+```
+
+Extra: Calculate entrapment efficiency according to Gabiatti et al 2018 --> although this may not be a good idea for plate assays (?)
+```{r}
+# Trying to calculate entrapment efficiency via Gabiatti 
+viro_quant$e.e <- viro_quant$VPFU_stock / (viro_quant$VPFU_stock + viro_quant$Spores_CFU_stock) * 100
+
+# Averaging the entrapment effieicny among the replicate plaques so that I can report an average
+avg_efficiency <- viro_quant %>%
+  group_by(Region) %>%
+  summarize(MeanEfficiency = mean(e.e, na.rm = TRUE),
+            SD = sd(e.e, na.rm = TRUE),
+            N = n())
+
+library(ggplot2)
+
+ggplot(avg_efficiency, aes(x = Sample, y = MeanEfficiency)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  theme_minimal() +
+  labs(title = "Entrapment Efficiency",
+       x = "Sample",
+       y = "Entrapment Efficiency (Entrapped / Total PFU)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+Okay getting back on track...
+
+1C. Calculate the amount of Free PFU and Spores CFU per cm^2 area
+```{r}
+# Calculate per area for free phage
+viro_quant$Free_PFU_cm2 <- viro_quant$Free_PFU_stock / (0.00785)
+#viro_quant$Free_PFU_5_cm2 <- viro_quant$Free_PFU_5stock / (0.00785)
+#viro_quant$Free_PFU_7_cm2 <- viro_quant$Free_PFU_7stock / (0.00785)
+
+# For free spores
+viro_quant$Spores_CFU_cm2 <- viro_quant$Spores_CFU_stock / (0.00785)
+#viro_quant$Spores_CFU_5_cm2 <- viro_quant$Spores_CFU_5stock / (0.00785)
+#viro_quant$Spores_CFU_7_cm2 <- viro_quant$Spores_CFU_7stock / (0.00785)
+
+# For virospores
+viro_quant$Virospores_cm2 <- viro_quant$VPFU_stock / (0.00785)
+```
+
+Subset data to plot 
+```{r}
+# Plotting counts
+viro_quant.new <- viro_quant[, c("Plaque", "Sample", "Region", "Virospores_cm2", "Distance_from_PFU_center_cm", "Free_PFU_cm2", "Spores_CFU_cm2")]
+
+# Calculate total spores with VPFU and the averages (if needed)
+viro_quant.new$Spores_total <- viro_quant.new$Spores_CFU_cm2 + viro_quant.new$Virospores_cm2
+```
+
+
+Preparing to plot data
+```{r}
+# Convert data to long format
+viro_quant.long <- viro_quant.new %>%
+  pivot_longer(cols = c(Virospores_cm2, Free_PFU_cm2, Spores_CFU_cm2), 
+               names_to = "variable", 
+               values_to = "value") 
+
+# Define shading regions of where the annulus, kill zone, and lawn is
+region_shading <- data.frame(
+  Region = c("Center", "Annulus", "Lawn"),
+  xmin = c(0, 0.05, 0.1),   # Starting x-value for each region
+  xmax = c(0.05, 0.1, 0.15)  # Ending x-value for each region
+)
+region_shading$Region <- factor(region_shading$Region, levels = c("Center", "Annulus", "Lawn"))
+
+# Plot with facet wrap
+ggplot(viro_quant.long, aes(x = Distance_from_PFU_center_cm, y = value, color = variable, group = variable)) +
+  # Add shaded regions
+  geom_rect(data = region_shading, inherit.aes = FALSE, 
+            aes(xmin = xmin, xmax = xmax, ymin = 0, ymax = Inf, fill = Region), 
+            alpha = 0.3) +
+  # Line and point layers
+  geom_line() +  
+  geom_point(size = 2) + 
+  # Custom fill colors for shaded regions
+  scale_fill_manual(values = c("Center" = "white", "Annulus" = "lightgray", "Lawn" = "darkgray")) +  
+  # Log transformation for y-axis
+  scale_y_log10() +
+  # Labels 
+  labs(title = "Virospore Multi-Quant Plot", 
+       x = "Distance from PFU center (cm)", 
+       y = "Virospores, Free Phage, Uninfected Spores per cm^2", 
+       color = "Measurement") +
+  theme_classic() +
+  facet_wrap(~Plaque)  # Facet by Plaque
+
+```
+Plotting with different colors and altering the x axis
+```{r}
+
+ggplot(viro_quant.long, aes(x = Distance_from_PFU_center_cm, y = value, color = variable, group = variable)) +
+  # Add shaded regions
+  geom_rect(data = region_shading, inherit.aes = FALSE, 
+            aes(xmin = xmin, xmax = xmax, ymin = 0, ymax = Inf, fill = Region), 
+            alpha = 0.3) +
+  # Line and point layers
+  geom_line(linewidth = 1.2) +  
+  geom_point(size = 2) + 
+  # Custom colors for lines with correct label placement
+  scale_color_manual(
+    values = c("Virospores_cm2" = "#457B9D", "Free_PFU_cm2" = "#E63946", "Spores_CFU_cm2" = "#2A9D8F"),
+    labels = c("Virospores_cm2" = "Virospores", "Free_PFU_cm2" = "Free phage", "Spores_CFU_cm2" = "Uninfected spores")  # Correct placement of labels
+  ) +  
+  # Custom fill colors for shaded regions
+  scale_fill_manual(values = c("Center" = "white", "Annulus" = "lightgray", "Lawn" = "darkgray")) +  
+  # Log transformation for y-axis
+  scale_y_log10() +
+  # Labels 
+  labs(title = "", 
+       x = "Distance from PFU center (cm)", 
+       y = "Virospores, Free Phage, Uninfected Spores per cm²", 
+       color = "Measurement") +
+  theme_classic(base_size = 12) +
+  
+  # Ensure x-axis values overlap properly
+  theme(axis.text.x = element_text(angle = 50, vjust = 0.5)) +
+  # Expand the plotting area to prevent cut-off points
+  coord_cartesian(clip = "off") +
+  # Facet by Plaque (duplicate removed)
+  facet_wrap(~Plaque)
+
+```
+
+
+2. Plot all samples as individuals
+```{r}
+viro_quant.long.all <- viro_quant.new %>%
+  pivot_longer(cols = c(Virospores_cm2),
+   names_to = "variable", 
+               values_to = "value")
+# Plot
+ggplot(viro_quant.long.all, aes(x = Distance_from_PFU_center_cm, y = value, color = variable, group = variable)) +
+  # Add shaded regions using geom_rect()
+  geom_rect(data = region_shading, inherit.aes = FALSE, 
+            aes(xmin = xmin, xmax = xmax, ymin = 0, ymax = Inf, fill = Region), 
+            alpha = 0.3) +
+  # Line and point layers
+  geom_line(linewidth = 1.2) +  
+  geom_point(aes(color = variable), size = 2) + 
+  # Custom fill colors for shaded regions
+  scale_fill_manual(values = c("Center" = "lightblue", "Annulus" = "lightgreen", "Lawn" = "lightpink")) +  
+  # Log transformation for y-axis
+  scale_y_log10() +
+  # Labels 
+  labs(title = "Virospore Multi-Quant Plot Plaque A", 
+       x = "Distance from PFU center (cm)", 
+       y = "Virospores, Free Phage, Uninfected Spores per cm^2", 
+       color = "Measurement") +
+  theme_minimal()
+```
+
+Plotting the averge data of the 3 replicate PFUs
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# Compute the average across plaques
+viro_quant_avg <- viro_quant.long %>%
+  group_by(Distance_from_PFU_center_cm, variable) %>%
+  summarize(value = mean(value), .groups = "drop")
+
+# Define shading regions
+#region_shading <- data.frame(
+  #Region = c("Center", "Annulus", "Lawn"),
+  #xmin = c(0, 0.05, 0.1),   # Starting x-value for each region
+  #xmax = c(0.05, 0.1, 0.15)  # Ending x-value for each region
+#)
+#region_shading$Region <- factor(region_shading$Region, levels = c("Center", "Annulus", "Lawn"))
+
+# Plot averaged data
+ggplot(viro_quant_avg, aes(x = Distance_from_PFU_center_cm, y = value, color = variable, group = variable)) +
+  # Add shaded regions
+  #geom_rect(data = region_shading, inherit.aes = FALSE, 
+            #aes(xmin = xmin, xmax = xmax, ymin = 0, ymax = Inf, fill = Region), 
+            #alpha = 0.3) +
+  # Line and point layers + 
+  geom_line() +
+  geom_point(size = 2) + 
+  geom_vline(xintercept = c(0.05, 0.1), 
+             linetype = "dashed", color = "darkgray", size = 0.8) +
+  # Custom fill colors for shaded regions
+  #scale_fill_manual(values = c("Center" = "white", "Annulus" = "lightgray", "Lawn" = "darkgray")) +  
+  # Log transformation for y-axis
+  scale_y_log10() +
+  coord_fixed(ratio = 0.1) +
+  # Labels 
+  labs(title = "", 
+       x = "Distance from center (cm)", 
+       y = "Virospores, Free Phage, Uninfected Spores (#/cm²)", 
+       color = "Measurement") +
+  theme_classic()
+
+```
+
+
+

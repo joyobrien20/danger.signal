@@ -1,0 +1,2 @@
+Curve,b0,b0.se,A,A.se,umax,umax.se,L,L.se,RSME,CV,outlier
+mean_gfp,3.2046,0.13497,7.4809,1.14257,0.5189,0.0522,21.2967,0.69241,1.2159,25.72,0
