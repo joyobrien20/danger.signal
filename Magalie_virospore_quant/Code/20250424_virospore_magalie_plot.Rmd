@@ -1,0 +1,249 @@
+---
+title: "virospore annulus (Magalie) -- VIROSPORES only"
+author: "Joy O'Brien"
+date: "2025-04-24"
+output: html_document
+---
+Joshua's feedback from the first figure--things to remember to do this time: 
+- Do not draw means or standard deviations 
+- Connect lines for each plaque
+- Maybe add poisson counting statistics as SEM for each of the points
+
+```{r setup, include=FALSE}
+setwd("~/GitHub/VirosporeQuant/Magalie_virospore_quant")
+```
+
+```{r}
+library(readxl)
+library(dplyr)
+library(tidyr)  
+library(vegan)
+library(ggplot2)
+library(mgcv)
+
+# Read in data
+viro_quant <- read_excel("~/GitHub/VirosporeQuant/Magalie_virospore_quant/Data/Annulus_Quant/20250329_2253_viromultiquant_magalie.xlsx", sheet = "raw_data")
+
+```
+
+1. Calculate VPFU/mL
+```{r}
+# We want to calculate VPFU, CFU and PFU of the original suspension which is # of PFU or CFU / vol plated x total dilution factor
+
+# VPFU only (for now)
+viro_quant$VPFU_mL_1 <- viro_quant$VPFU_10e1 / (0.1 * (10^-1)) # using data from the 10^-1 dilution, disregarding the 10^-2 data
+#viro_quant$VPFU_mL_2 <- viro_quant$VPFU_10e2 / (0.1 * (10^-2))
+```
+
+1B. Calculate CFU/mL and PFU/mL per stock solution for each sample
+```{r}
+viro_quant$VPFU_stock <- viro_quant$VPFU_mL_1 * 1.5 # 1.5 mL is the volume that the sample was deposited into
+```
+1C. Calulate the amount of virospores per cm^2 area
+```{r}
+# For virospores
+viro_quant$Virospores_cm2 <- viro_quant$VPFU_stock / (0.00785) # this is the area of the pipette tip in cm ^2
+```
+
+2. Plotting counts
+```{r}
+viro_quant.new <- viro_quant[, c("Plaque", "Sample", "Region", "Virospores_cm2", "Distance_from_PFU_center_cm")]
+
+viro_quant.long <- viro_quant.new %>%
+  pivot_longer(cols = c(Virospores_cm2), 
+               names_to = "variable", 
+               values_to = "value") 
+```
+
+```{r}
+# Define shading regions
+region_shading <- data.frame(
+  Region = c("Center", "Annulus", "Lawn"),
+  xmin = c(0, 0.05, 0.1),   # Starting x-value for each region
+  xmax = c(0.05, 0.1, 0.15)  # Ending x-value for each region
+)
+region_shading$Region <- factor(region_shading$Region, levels = c("Center", "Annulus", "Lawn"))
+
+# Plot with facet wrap
+ggplot(viro_quant.long, aes(x = Distance_from_PFU_center_cm, y = value, color = Plaque, group = Plaque)) +
+  # Add shaded regions
+  geom_rect(data = region_shading, inherit.aes = FALSE, 
+            aes(xmin = xmin, xmax = xmax, ymin = 0, ymax = Inf, fill = Region), 
+            alpha = 0.3) +
+  # Line and point layers
+  geom_point(size = 2) + 
+  geom_line() + 
+  # Custom fill colors for shaded regions
+  scale_fill_manual(values = c("Center" = "white", "Annulus" = "lightgray", "Lawn" = "darkgray")) +  
+  # Log transformation for y-axis
+  scale_y_log10() +
+  coord_fixed(ratio = 0.1) + # Setting distance between x axis ticks
+  # Labels 
+  labs(title = "Virospore Plot", 
+       x = "Distance from PFU center (cm)", 
+       y = "Virospores per cm^2") +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+```
+
+3. Averaging across plaques and plotting
+```{r}
+library(dplyr)
+
+# First, assign regions based on distance if not already present
+library(dplyr)
+
+# Summarize across plaques
+viro_quant_avg <- viro_quant.long %>%
+  group_by(Distance_from_PFU_center_cm) %>%  # Use Region if needed instead of distance
+  summarise(
+    mean_virospores = mean(value, na.rm = TRUE),
+    n = n(),  # number of plaques (should be 3)
+    SEM = sd(value, na.rm = TRUE) / sqrt(n),
+    .groups = "drop"
+  )
+head(viro_quant_avg)
+
+
+library(ggplot2)
+
+ggplot(viro_quant_avg, aes(x = Distance_from_PFU_center_cm, y = mean_virospores)) +
+  geom_rect(data = region_shading, inherit.aes = FALSE, 
+            aes(xmin = xmin, xmax = xmax, ymin = 0, ymax = Inf, fill = Region),
+            alpha = 0.3) +
+  geom_point(color = "darkgreen", size = 3) +
+  geom_line(color = "darkgreen") +
+  geom_errorbar(aes(ymin = mean_virospores - SEM, ymax = mean_virospores + SEM),
+                width = 0.005, color = "darkgreen") +
+  scale_fill_manual(values = c("Center" = "white", "Annulus" = "lightgray", "Lawn" = "darkgray")) +
+  scale_y_log10() +
+   #coord_fixed(ratio = 0.1) + # Setting distance between x axis ticks
+  labs(
+    title = "Average Virospore Counts Across 3 Plaques",
+    x = "Distance from PFU center (cm)",
+    y = "Mean Virospores per cm²"
+  ) +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+
+```
+4. Plotting with Joshua's previous feedback in mind and using the color in Magalie data
+```{r}
+library(ggplot2)
+
+ggplot(viro_quant_avg, aes(x = Distance_from_PFU_center_cm, y = mean_virospores)) +
+  geom_rect(data = region_shading, inherit.aes = FALSE, 
+            aes(xmin = xmin, xmax = xmax, ymin = 0, ymax = Inf, fill = Region),
+            alpha = 0.3) +
+  geom_point(color = "#94f293", size = 3) +
+  # Adding smooth lines
+  geom_smooth(method = "loess", color = "#94f293", se = FALSE, size = 1) + 
+  # geom_line(color = "darkgreen")  # You can remove this if you want only smooth lines
+  geom_errorbar(aes(ymin = mean_virospores - SEM, ymax = mean_virospores + SEM),
+                width = 0.005, color = "black") +
+  scale_fill_manual(values = c("Center" = "white", "Annulus" = "lightgray", "Lawn" = "darkgray")) +
+  scale_y_log10() +
+  labs(
+    title = "",
+    x = "Distance from PFU center (cm)",
+    y = "Mean Virospores per cm²"
+  ) +
+  theme_minimal() +
+  coord_fixed(ratio = 0.1) + # Setting distance between x axis ticks
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+```
+4A. Plotting the above again but this time with no shading in the background for the regions of the plaque, instead dotted lines will signify regions 
+```{r}
+library(ggplot2)
+
+ggplot(viro_quant_avg, aes(x = Distance_from_PFU_center_cm, y = mean_virospores)) +
+  geom_point(color = "#94f293", size = 3) +
+  # Adding smooth lines
+  geom_smooth(method = "loess", color = "#94f293", se = FALSE, size = 1) + 
+  # geom_line(color = "darkgreen")  # You can remove this if you want only smooth lines
+  geom_errorbar(aes(ymin = mean_virospores - SEM, ymax = mean_virospores + SEM),
+                width = 0.005, color = "black") +
+  # Adding in vertical lines
+  geom_vline(xintercept = c(0.05, 0.1),
+             linetype = "dashed", color = "darkgray", size = 0.8) +
+  scale_fill_manual(values = c("Center" = "white", "Annulus" = "lightgray", "Lawn" = "darkgray")) +
+  scale_y_log10() +
+  labs(
+    title = "",
+    x = "Distance from PFU center (cm)",
+    y = "Mean Virospores per cm²"
+  ) +
+  theme_minimal() +
+  coord_fixed(ratio = 0.1)  # Setting distance between x axis ticks
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+```
+4B. Attempting to make it look more like the other figures in the manuscript
+
+```{r}
+library(ggplot2)
+
+ggplot(viro_quant_avg, aes(x = Distance_from_PFU_center_cm, y = mean_virospores)) +
+  geom_point(color = "#94f293", size = 3) +
+  geom_smooth(method = "loess", color = "#94f293", se = FALSE, size = 1) + 
+  geom_errorbar(aes(ymin = mean_virospores - SEM, ymax = mean_virospores + SEM),
+                width = 0.005, color = "black") +
+  geom_vline(xintercept = c(0.05, 0.1),
+             linetype = "dashed", color = "darkgray", size = 0.8) +
+  scale_fill_manual(values = c("Center" = "white", "Annulus" = "lightgray", "Lawn" = "darkgray")) +
+  scale_y_log10() +
+  labs(
+    title = "SPO1 Plaque Virospores",
+    x = "Distance from PFU center (cm)",
+    y = "Mean Virospores per cm²"
+  ) +
+  theme_classic() +    # <<-- use classic theme instead of minimal
+  coord_fixed(ratio = 0.1) +
+  theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    axis.line = element_line(color = "black"), 
+    plot.title = element_text(hjust = 0.5, vjust = 0.5)
+  )
+```
+Editing code for the following: 
+x-axis: “distance from center (cm)” to match figures in Magalie
+y-axis: typically don’t say “mean”. This will be denoted in caption
+y-axis: “Virospore density (#/cm^2)”
+plot titles: not included in publications
+To match Magalie, we might consider plotting standard deviations and means as above on left.
+
+```{r}
+library(ggplot2)
+
+ggplot(viro_quant_avg, aes(x = Distance_from_PFU_center_cm, y = mean_virospores)) +
+  geom_point(color = "#94f293", size = 3) +
+  geom_smooth(method = "loess", color = "#94f293", se = FALSE, size = 1) + 
+  geom_errorbar(aes(ymin = mean_virospores - SEM, ymax = mean_virospores + SEM),
+                width = 0.005, color = "black") +
+  geom_vline(xintercept = c(0.05, 0.1),
+             linetype = "dashed", color = "darkgray", size = 0.8) +
+  scale_fill_manual(values = c("Center" = "white", "Annulus" = "lightgray", "Lawn" = "darkgray")) +
+  scale_y_log10() +
+  labs(
+    title = "", # no need to include plot titles in publications
+    x = "Distance from center (cm)",
+    y = "Virospores (#/cm²)"
+  ) +
+  theme_classic() +    # <<-- use classic theme instead of minimal
+  coord_fixed(ratio = 0.1) +
+  theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    axis.line = element_line(color = "black"), 
+    plot.title = element_text(hjust = 0.5, vjust = 0.5)
+  )
+
+```
+
+
+
+
+
+
+

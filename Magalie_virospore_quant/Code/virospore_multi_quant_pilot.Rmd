@@ -1,0 +1,77 @@
+---
+title: "Virospore annulus multi-quant"
+author: "Joy O'Brien"
+date: "2025-03-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(dplyr)
+library(tidyr)  
+library(vegan)
+library(ggplot2)
+library(mgcv)
+
+# Things to do: create project for this, fork the Magalie repo and add to it, 
+# Read data into 
+viro_quant <- read_excel("~/GitHub/VirosporeQuant/Magalie_virospore_quant/Data/Annulus_Quant/20250311_annulus_multiquant_pilot.xlsx", sheet = "mutliquant_pilot")
+```
+
+```{r}
+viro_quant$Distance_from_PFU_cm <- factor(viro_quant$Distance_from_PFU_cm)
+
+# Boxplot of recovered VPFU by distance from PFU for fun
+ggplot(viro_quant, aes(x = Distance_from_PFU_cm, y = VPFU, fill = Region)) +
+  geom_boxplot(alpha = 0.7) +
+  labs(title = "Recovered VPFU by Distance from PFU", x = "Distance from PFU", y = "Recovered VPFU") +
+  theme_minimal()
+```
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Normalize the data to the area of the pipette tip (in cm) before calculating summary statistics (VPFU)
+viro_quant$VPFU <- viro_quant$VPFU / 0.00785
+
+str(viro_quant$Free_PFU)  # Should be "num"
+viro_quant$Free_PFU <- as.numeric(viro_quant$Free_PFU)
+viro_quant$Free_PFU <- viro_quant$Free_PFU / 0.00785
+
+
+viro_quant$CFU <- viro_quant$CFU / 0.00785
+
+
+```
+```{r}
+# Let's plot 
+# Convert data to long format
+viro_quant.long <- viro_quant %>%
+  pivot_longer(cols = c(VPFU, Free_PFU, CFU), 
+               names_to = "variable", 
+               values_to = "value")
+region_shading <- data.frame(
+  Region = c("Center", "Annulus", "Lawn"),
+  xmin = c(0, 0.1, 0.2),   # Starting x-value for each region
+  xmax = c(0.1, 0.2, 0.4)  # Ending x-value for each region
+)
+region_shading$Region <- factor(region_shading$Region, levels = c("Center", "Annulus", "Lawn"))
+
+# Plot
+ggplot(viro_quant.long, aes(x = Distance_from_PFU_cm_correct, y = value, color = variable, group = variable)) +
+  geom_line(linewidth = 1.2) +  
+  geom_point(aes(color = variable),size = 2) + 
+  scale_y_log10() +
+    # Add shaded regions using geom_rect()
+  geom_rect(data = region_shading, inherit.aes = FALSE, 
+            aes(xmin = xmin, xmax = xmax, ymin = 0, ymax = Inf, fill = Region), 
+            alpha = 0.3) +
+  #facet_wrap(~ Region) +  
+  #scale_color_manual(values = c("coral", "cyan", "purple"), labels =c("Uninfected spores", "Free phage", "Virospores")) +  # Custom colors
+  labs(title = "Virospores, Free phage, and uninfected spores vs Distance", 
+       x = "Distance from PFU (cm)", y = "Virospores, Free phage , uninfected spores per cm^2", 
+       color = "Measurement") +
+scale_fill_manual(values = c("Center" = "lightblue", "Annulus" = "lightgreen", "Lawn" = "lightpink"))
+```
+
