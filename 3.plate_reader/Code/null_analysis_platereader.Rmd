@@ -1,0 +1,171 @@
+---
+title: "Spo0A:GFP Plate reader analysis for Magalie"
+author: "Joy O'Brien"
+date: "2025-05-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+setwd("~/GitHub/danger.signal/3.plate_reader")
+```
+
+1. Load data
+```{r}
+gfp <- read.csv("~/GitHub/danger.signal/3.plate_reader/GrowthCurves/data/20250213_spo0agfp_gfp_reads.csv")
+treats.gfp <- read.csv("~/GitHub/danger.signal/3.plate_reader/GrowthCurves/data/20250213_treatments_spo0A_gfp.csv")
+
+```
+
+```{r}
+# Remove data from empty wells (20250213 plate)
+gfp <- subset(gfp, select = -c(A2, A3, A5, A6, A8, A9, A11, A12, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, D2, D3, D5, D6, D8, D9, D11, D12, E1, E2, E3, E4, E5, E6, E7, E8, E9, E10, E11, E12, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, G2, G3, G5, G6, G8, G9, G11, G12, H1, H2, H3, H4, H5, H6, H7, H8, H9, H10, H11, H12))
+
+
+
+# For the 20240213 data where two different media are used, we need to do it twice
+DSM_columns_to_adjust <- c("A1","A7","A10","D1","D4","D7")
+cDSM_columns_to_adjust <- c("A4", "D10", "G1", "G4", "G7", "G10")
+
+gfp <- gfp
+gfp[DSM_columns_to_adjust] <- sweep(gfp[DSM_columns_to_adjust], 1, gfp$A1, "-")
+
+gfp <- gfp
+gfp[cDSM_columns_to_adjust] <- sweep(gfp[cDSM_columns_to_adjust], 1, gfp$A4, "-")
+
+# Subtract background fluorescence from LB media 
+# columns_to_adjust <- c()
+# Subtract the value for the LB blank from the specified columns (samples)
+#gfp <- gfp
+#gfp[columns_to_adjust] <- sweep(gfp[columns_to_adjust], 1, gfp$A1, "-")
+
+# Print the adjusted data frame
+print(gfp)
+
+# Change times to numeric
+gfp$Time <- as.numeric(sub("^(\\d+):(\\d+).*", "\\1.\\2", gfp $Time))
+head(gfp, header = T)
+
+## Removing well G7 because it's an outlier
+#gfp.BBveg <- gfp.BBveg %>% select(-G7)
+
+# Create detrended data by subtracting control GFP reporter fluorescence
+
+#library(dplyr)
+
+# Step 1:  Identify the control wells and the experimental wells
+#control_wells <- c("A4", "A7")
+#exp_wells <- c("A10", "D1", "D4", "D7", "D10", "G1", "G4", "G7", "G10")
+
+# Obtain the average of the control wells for each time point in the time series
+#gfp <- gfp %>%
+  #mutate(Control_Avg = rowMeans(select(., all_of(control_wells)), na.rm = TRUE))
+
+# Subtract the control average from the experimental wells
+#gfp_detrend <- gfp %>%
+  #mutate(across(all_of(exp_wells), ~ . - Control_Avg, .names = "{.col}_detrend")) %>%
+  #select(Time, Control_Avg, everything())  # Keep Time and new corrected values
+
+
+# View the result
+#print(gfp_detrend)
+
+# Change times to numeric
+#gfp_detrend$Time <- as.numeric(sub("^(\\d+):(\\d+).*", "\\1.\\2", gfp_detrend $Time))
+#head(gfp_detrend, header = T)
+
+# Subsetting gfp_detrend so that we can run through the model analysis
+#gfp.new <- gfp_detrend %>%
+  #select(Time, "A1","A10_detrend", "D1_detrend", "D4_detrend", "D7_detrend", "D10_detrend", "G1_detrend", "G4_detrend", "G7_detrend", "G10_detrend")
+
+# Remove _detend from the well names
+#colnames(gfp.new) <- gsub("_detrend", "", colnames(gfp.new))
+```
+2. Set up data to create a figure of GFP over time
+```{r}
+# Rename the columns based on the sample instead of well number
+library(dplyr)
+library(tidyr)
+gfp <- gfp %>%
+  rename(DSM_blank = A1, cDSM_blank = A4, GFP_DSM_control_R1 = A7, GFP_DSM_control_R2 = A10, GFP_DSM_BBphage_R1= D1, GFP_DSM_BBphage_R2= D4, GFP_DSM_BBphage_R3 = D7, GFP_cDSM_control_R1 = D10, GFP_cDSM_control_R2
+= G1, GFP_cDSM_Bbphage_R1 = G4, GFP_cDSM_Bbphage_R2 = G7, GFP_cDSM_Bbphage_R3= G10)
+```
+
+
+```{r}
+# Pivot data to longer format
+gfp_long <- gfp %>%
+  pivot_longer(
+    cols = -c(Time, Temp.),  # keep Time and Temp. as-is
+    names_to = "Sample",     # name for the new column holding old column names
+    values_to = "GFP"        # name for the new column holding values
+  )
+
+# View the result
+head(gfp_long)
+
+# Remove any cDSM result
+
+gfp_long_filtered <- gfp_long %>%
+  filter(!grepl("cDSM", Sample))
+
+# View the result
+head(gfp_long_filtered)
+
+
+```
+
+# Coming back to this on May 8th--> I think we need to transform the data before plotting so that we don't lose samples
+```{r}
+library(ggplot2)
+# Subset the data 
+ggplot(gfp_long, aes(x = Time, y = GFP, color = Sample)) +
+  #geom_line() +
+  geom_smooth(span = 0.4, alpha = 0.2) +
+  #geom_smooth(span, se = TRUE, alpha = 0.2) +
+  #geom_point() +
+  scale_y_log10() +
+  labs(
+    title = "",
+    x = "Time (hours)",
+    y = "GFP (RFU)",
+    color = "Sample"
+  ) +
+    theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    legend.position = "right",  # adjust legend position
+    panel.grid.major = element_blank(),  # removes major grid lines
+    panel.grid.minor = element_blank(),  # removes minor grid lines
+    panel.background = element_blank(),  # removes the background color
+    plot.background = element_blank(),  # removes background around the plot
+    theme_minimal()  # minimal theme
+  )
+```
+
+
+```{r}
+ggplot(flow.spore, aes(x = time.hr, y = spore.ml, color = trt)) +
+  #geom_point() +
+  geom_smooth(span = 0.4, alpha = 0.2) + 
+  labs(
+    title = "",
+    x = "Time (hours)",
+    y = "Spores per mL",
+    color = "Treatment"
+  ) +
+  theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    legend.position = "right",  # adjust legend position
+    panel.grid.major = element_blank(),  # removes major grid lines
+    panel.grid.minor = element_blank(),  # removes minor grid lines
+    panel.background = element_blank(),  # removes the background color
+    plot.background = element_blank(),  # removes background around the plot
+    theme_minimal()  # minimal theme
+  ) +
+  annotate("text", x = 20, y = 1500000000, label = "Rm-ANOVA p = 0.064", color = "black", size = 5)
+
+```
+
+
+
+
+Repeated measures ANOVA
