@@ -1,0 +1,163 @@
+---
+title: "Macroplate analysis for Magalie"
+author: "Joy O'Brien"
+date: "2025-05-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+setwd("~/GitHub/danger.signal/2.square_plate")
+```
+
+Load in all data
+```{r}
+library(readxl)
+# Read in the measurements
+h11 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/11h.csv")
+h12 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/12h.csv")
+h13 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/13h.csv")
+h14 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/14h.csv")
+h15 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/15h.csv")
+h16 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/16h.csv")
+h17 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/17h.csv")
+h18 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/18h.csv")
+h19 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/19h.csv")
+h23 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/23h.csv")
+
+# Read in the metadata
+meta <- read_xlsx("~/GitHub/danger.signal/2.square_plate/Data/square_plate_meta.xlsx", sheet = "Sheet1")
+```
+
+Add a Time column in each of the datasets
+```{r}
+library(dplyr)
+h11 <- h11 %>%
+  mutate(Time_h = 11)
+
+h12 <- h12 %>%
+  mutate(Time_h = 12)
+
+h13 <- h13 %>%
+  mutate(Time_h = 13)
+
+h14 <- h14 %>%
+  mutate(Time_h = 14)
+
+h15 <- h15 %>%
+  mutate(Time_h = 15)
+
+h16 <- h16 %>%
+  mutate(Time_h = 16)
+
+h17 <- h17 %>%
+  mutate(Time_h = 17)
+h18 <- h18 %>%
+  mutate(Time_h = 18)
+
+h19 <- h19 %>%
+  mutate(Time_h = 19)
+
+h23 <- h23 %>%
+  mutate(Time_h = 23)
+```
+
+Combine all data to one giant dataset
+```{r}
+square.plate <- bind_rows(h11,h12,h13,h14,h15,h16,h17,h18,h19,h23)
+
+# Remove columns we don't need
+#square.plate <- square.plate %>%
+ # select(-X, -Time)
+
+# Add the metadata 
+library(dplyr)
+
+square.plate.meta <- left_join(square.plate, meta, by = c("Sample_ID", "Time_h"))
+
+# Rescale?
+#rescale_minmax <- function(x, lower = 1, upper = 10) {
+  #return(lower + (x - min(x)) / (max(x) - min(x)) * (upper - lower))
+#}
+# Trying Z-score normalization/rescaling
+#zscore_normalization <- function(x) {
+ # return((x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE))
+#}
+
+# Specify columns to scale
+#columns_to_scale <- c("IntDen")
+#square.plate.meta[columns_to_scale] <- lapply(square.plate.meta[columns_to_scale], rescale_minmax)
+
+```
+
+Plot
+```{r}
+library(ggplot2)
+# Subset the data 
+ggplot(square.plate.meta, aes(x = Time_h, y = IntDen, color = Treatment)) +
+  #geom_line() +
+  geom_smooth(span = 0.4, alpha = 0.2) +
+  #geom_smooth(span, se = TRUE, alpha = 0.2) +
+  geom_point() +
+  #scale_y_log10()
+  labs(
+    title = "",
+    x = "Time (hours)",
+    y = "Intensity",
+    color = "Treatment"
+  ) +
+  theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    legend.position = "right",  # adjust legend position
+    theme_minimal()
+  )
+```
+```{r}
+library(ggplot2)
+# Subset the data 
+ggplot(square.plate.meta, aes(x = Time_h, y = IntDen, color = Treatment)) +
+  #geom_line() +
+  geom_smooth(span = 0.4, alpha = 0.2) +
+  #geom_smooth(span, se = TRUE, alpha = 0.2) +
+  #geom_point() +() +
+  labs(
+    title = "",
+    x = "Time (hours)",
+    y = "GFP Intensity",
+    color = "Treatment"
+  ) +
+    theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    legend.position = "right",  # adjust legend position
+    panel.grid.major = element_blank(),  # removes major grid lines
+    panel.grid.minor = element_blank(),  # removes minor grid lines
+    panel.background = element_blank(),  # removes the background color
+    plot.background = element_blank(),  # removes background around the plot
+    theme_minimal()  # minimal theme
+  ) + 
+   annotate("text", x = 20, y = 70000, label = "Rm-ANOVA p = 0.0446*", color = "black", size = 5)
+```
+
+Rescale the data? 
+```{r}
+
+```
+
+Replot
+
+```{r}
+# Before running repeated measures anova remove the WT control from the samples (same thing as a blank?)
+square.plate.meta.noWT <- square.plate.meta %>%
+  filter(Treatment != "Non_reporter_control")
+```
+
+Run RM-ANOVA
+```{r}
+aov_result_sp <- aov(IntDen ~ Treatment * Time_h + Error(Sample / Time_h), data = square.plate.meta.noWT)
+summary(aov_result_sp)
+
+library(emmeans)
+
+emmeans_result_sp <- emmeans(aov_result_sp, ~ Treatment | Time_h)
+pairs(emmeans_result_sp)
+```
+Now that I am looking at this data I am unsure how to account for the dilutions
