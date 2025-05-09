@@ -1,0 +1,400 @@
+---
+title: "Spo0A:GFP Plate reader analysis for Magalie"
+author: "Joy O'Brien"
+date: "2025-05-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+setwd("~/GitHub/danger.signal/3.plate_reader")
+```
+
+1. Load data
+```{r}
+gfp <- read.csv("~/GitHub/danger.signal/3.plate_reader/GrowthCurves/data/20250213_spo0agfp_gfp_reads.csv")
+treats.gfp <- read.csv("~/GitHub/danger.signal/3.plate_reader/GrowthCurves/data/20250213_treatments_spo0A_gfp.csv")
+
+```
+
+1A. Prep/clean data for plotting RFU over time
+```{r}
+# Remove data from empty wells (20250213 plate)
+gfp <- subset(gfp, select = -c(A2, A3, A5, A6, A8, A9, A11, A12, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, D2, D3, D5, D6, D8, D9, D11, D12, E1, E2, E3, E4, E5, E6, E7, E8, E9, E10, E11, E12, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, G2, G3, G5, G6, G8, G9, G11, G12, H1, H2, H3, H4, H5, H6, H7, H8, H9, H10, H11, H12))
+
+
+# For the 20240213 data where two different media are used, we need to do it twice
+DSM_columns_to_adjust <- c("A1","A7","A10","D1","D4","D7")
+cDSM_columns_to_adjust <- c("A4", "D10", "G1", "G4", "G7", "G10")
+
+gfp <- gfp
+gfp[DSM_columns_to_adjust] <- sweep(gfp[DSM_columns_to_adjust], 1, gfp$A1, "-")
+
+gfp <- gfp
+gfp[cDSM_columns_to_adjust] <- sweep(gfp[cDSM_columns_to_adjust], 1, gfp$A4, "-")
+
+
+
+# Print the adjusted data frame
+print(gfp)
+
+# Change times to numeric
+gfp$Time <- as.numeric(sub("^(\\d+):(\\d+).*", "\\1.\\2", gfp $Time))
+head(gfp, header = T)
+
+
+
+
+```
+1B. Rescale the data
+```{r}
+# Rescale the data before transforming
+rescale_minmax <- function(x, lower = 1, upper = 10) {
+  return(lower + (x - min(x)) / (max(x) - min(x)) * (upper - lower))
+}
+# Trying Z-score normalization/rescaling
+#zscore_normalization <- function(x) {
+ # return((x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE))
+#}
+
+# Specify columns to scale
+columns_to_scale <- c("A7", "A10", "D1", "D4", "D7", "D10", "G1", "G4", "G7", "G10")
+gfp[columns_to_scale] <- lapply(gfp[columns_to_scale], rescale_minmax)
+```
+
+
+
+1C. Rename columns based on sample type
+```{r}
+# Rename the columns based on the sample instead of well number
+library(dplyr)
+library(tidyr)
+gfp <- gfp %>%
+  rename(DSM_blank = A1, cDSM_blank = A4, GFP_DSM_control_R1 = A7, GFP_DSM_control_R2 = A10, GFP_DSM_BBphage_R1= D1, GFP_DSM_BBphage_R2= D4, GFP_DSM_BBphage_R3 = D7, GFP_cDSM_control_R1 = D10, GFP_cDSM_control_R2
+= G1, GFP_cDSM_Bbphage_R1 = G4, GFP_cDSM_Bbphage_R2 = G7, GFP_cDSM_Bbphage_R3= G10)
+```
+
+1D. Convert to long format
+```{r}
+# Pivot data to longer format
+gfp_long <- gfp %>%
+  pivot_longer(
+    cols = -c(Time, Temp.),  # keep Time and Temp. as-is
+    names_to = "Sample",     # name for the new column holding old column names
+    values_to = "GFP"        # name for the new column holding values
+  )
+# View
+head(gfp_long)
+```
+
+
+
+
+```{r}
+
+
+```
+
+2. Plotting cDSM and DSM together (first look)
+```{r}
+library(ggplot2)
+# Subset the data 
+ggplot(gfp_long, aes(x = Time, y = GFP, color = Sample)) +
+  #geom_line() +
+  geom_smooth(span = 0.4, alpha = 0.2) +
+  #geom_smooth(span, se = TRUE, alpha = 0.2) +
+  #geom_point() +
+  #scale_y_log10() +
+  labs(
+    title = "",
+    x = "Time (hours)",
+    y = "GFP (RFU)",
+    color = "Sample"
+  ) +
+    theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    legend.position = "right",  # adjust legend position
+    panel.grid.major = element_blank(),  # removes major grid lines
+    panel.grid.minor = element_blank(),  # removes minor grid lines
+    panel.background = element_blank(),  # removes the background color
+    plot.background = element_blank(),  # removes background around the plot
+    theme_minimal()  # minimal theme
+  )
+```
+3. Subsetting data based on media type (cDSM, DSM)
+```{r}
+# Remove any cDSM result (subsetting cDSM data and DSM)
+gfp_long_DSM <- gfp_long %>%
+  filter(!grepl("cDSM", Sample))
+
+# View the result
+head(gfp_long_DSM)
+
+```
+
+3A. Plotting just the DSM samples 
+```{r}
+library(ggplot2)
+# Subset the data 
+ggplot(gfp_long_DSM, aes(x = Time, y = GFP, color = Sample)) +
+  #geom_line() +
+  geom_smooth(span = 0.4, alpha = 0.2) +
+  #geom_smooth(span, se = TRUE, alpha = 0.2) +
+  #geom_point() +
+  #scale_y_log10() +
+  labs(
+    title = "",
+    x = "Time (hours)",
+    y = "GFP (RFU)",
+    color = "Sample"
+  ) +
+    theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    legend.position = "right",  # adjust legend position
+    panel.grid.major = element_blank(),  # removes major grid lines
+    panel.grid.minor = element_blank(),  # removes minor grid lines
+    panel.background = element_blank(),  # removes the background color
+    plot.background = element_blank(),  # removes background around the plot
+    theme_minimal()  # minimal theme
+  ) + 
+   annotate("text", x = 20, y = 10, label = "Rm-ANOVA p = 0.6", color = "black", size = 5)
+```
+Editing figure for publication
+```{r}
+
+
+```
+
+```{r}
+
+
+```
+
+
+
+
+
+
+
+3B. Add a treatment column and remove blanks from the DSM df
+```{r}
+# Data needs to be in long format and contain columns that specify treatment, time, and RFU
+library(stringr)
+
+gfp_DSM <- gfp_long_DSM %>%
+  mutate(treatment = case_when(
+    str_detect(Sample, regex("phage", ignore_case = TRUE)) ~ "Phage particles",
+    str_detect(Sample, regex("control", ignore_case = TRUE)) ~ "Control",
+    str_detect(Sample, regex("blank", ignore_case = TRUE)) ~ "Blank",
+    TRUE ~ "other"  # fallback category if none match
+  ))
+# Remove blank samples
+#gfp_DSM <- gfp_DSM %>%
+  #filter(treatment != "blank")
+```
+
+Editing figure for publication/to look like the rest
+
+```{r}
+
+ggplot(gfp_DSM, aes(x = Time, y = GFP, color = treatment)) +
+  geom_smooth(span = 0.4, alpha = 0.2) +
+  labs(
+    title = "",
+    x = "Time (hours)",
+    y = "GFP (RFU)",
+    color = "Treatment"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    legend.position = "right",
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    plot.background = element_blank()
+  ) + 
+  annotate("text", x = 20, y = 10, label = "Rm-ANOVA p = 0.6", color = "black", size = 5)
+
+```
+
+
+
+
+
+
+
+3C. Run repeated-measures ANOVA on DSM samples
+```{r}
+# Sample is a factor identifying the repeated measures (between-subject factor)
+# Time is the repeated measure (within subject factor)
+# GFP is the response variable
+str(gfp_DSM)
+gfp_DSM$Sample <- as.factor(gfp_DSM$Sample)
+
+aov_result_DSM <- aov(GFP ~ treatment * Time + Error(Sample / Time), data = gfp_DSM)
+summary(aov_result_DSM)
+
+# AOV results no significant difference in the effect of treatment on samples p value = 0.603
+```
+
+Extra:
+```{r}
+
+# In the event that things were significant (as we found when blanks were included)
+#Looking at post-hoc since we know that blanks cause false significance 
+library(emmeans)
+
+emmeans_result_DSM <- emmeans(aov_result_DSM, ~ treatment | Time)
+pairs(emmeans_result_DSM)
+```
+
+
+3D. Plotting cDSM samples
+```{r}
+
+# Subset samples that include cDSM
+gfp_cDSM <- gfp_long[grepl("cDSM", gfp_long$Sample), ]
+
+
+ggplot(gfp_cDSM, aes(x = Time, y = GFP, color = Sample)) +
+  #geom_line() +
+  geom_smooth(span = 0.4, alpha = 0.2) +
+  #geom_smooth(span, se = TRUE, alpha = 0.2) +
+  #geom_point() +
+  #scale_y_log10() +
+  labs(
+    title = "",
+    x = "Time (hours)",
+    y = "GFP (RFU)",
+    color = "Sample"
+  ) +
+    theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    legend.position = "right",  # adjust legend position
+    panel.grid.major = element_blank(),  # removes major grid lines
+    panel.grid.minor = element_blank(),  # removes minor grid lines
+    panel.background = element_blank(),  # removes the background color
+    plot.background = element_blank(),  # removes background around the plot
+    theme_minimal()  # minimal theme
+  ) +
+  annotate("text", x = 20, y = 10, label = "Rm-ANOVA p = 0.417", color = "black", size = 5)
+
+
+
+```
+3E. Add treatment column and remove blanks from the cDSM
+```{r}
+# Data needs to be in long format and contain columns that specify treatment, time, and RFU
+library(stringr)
+
+gfp_cDSM <- gfp_cDSM %>%
+  mutate(treatment = case_when(
+    str_detect(Sample, regex("phage", ignore_case = TRUE)) ~ "phage",
+    str_detect(Sample, regex("control", ignore_case = TRUE)) ~ "control",
+    str_detect(Sample, regex("blank", ignore_case = TRUE)) ~ "blank",
+    TRUE ~ "other"  # fallback category if none match
+  ))
+
+# Remove blanks from the dataset because they are causing false significant results
+# Remove blank samples
+gfp_cDSM <- gfp_cDSM %>%
+  filter(treatment != "blank")
+```
+
+3F. Run repeated measures anova on the cDSM samples 
+```{r}
+# Sample is a factor identifying the repeated measures (between-subject factor)
+# Time is the repeated measure (within subject factor)
+# GFP is the response variable
+str(gfp_cDSM)
+gfp_cDSM$Sample <- as.factor(gfp_cDSM$Sample)
+
+aov_result_cDSM <- aov(GFP ~ treatment * Time + Error(Sample / Time), data = gfp_cDSM)
+summary(aov_result_cDSM)
+```
+Extra:
+```{r}
+# If things were significant and we did a post hoc follow up 
+  
+library(emmeans)
+
+emmeans_result_cDSM <- emmeans(aov_result_cDSM, ~ treatment | Time)
+pairs(emmeans_result_cDSM)
+```
+
+4. Moving on to compare Gompertz estimated onset parameters (cDSM first) -- come back and check why the lag times are weird
+```{r}
+# Since this data was previously run through Gompertz already, we just need to call the params
+# Loading cDSM params data
+library(readr)
+gfp.cDSM.controls.1parms <- read.csv("~/GitHub/danger.signal/3.plate_reader/GrowthCurves/output/gfp.cDSM.controls.1.parms.txt",header = TRUE)
+gfp.cDSM.bbphage.1parms <- read.csv("~/GitHub/danger.signal/3.plate_reader/GrowthCurves/output/gfp.cDSM.BBphage.1.parms.txt", header = TRUE)
+
+#cDSM params aren't making sense to me, need to go back and check what happened 
+```
+
+
+
+
+5. Moving on to compare Gompertz estimated onset parameters (DSM)
+```{r}
+gfp.DSM.controls.1parms <- read.csv("~/GitHub/danger.signal/3.plate_reader/GrowthCurves/output/gfp.DSM.controls.1.parms.txt",header = TRUE)
+gfp.DSM.bbphage.1parms <- read.csv("~/GitHub/danger.signal/3.plate_reader/GrowthCurves/output/gfp.DSM.BBphage.1.parms.txt", header = TRUE)
+```
+
+5A. We want to plot and show the following: Mean onset time, error bars, raw data points (can be done with ggplot jitter I think)
+```{r}
+# First combine the treatment and control data together
+# Assume df_exp and df_ctrl are your experimental and control datasets
+gfp.DSM.bbphage.1parms$treatment <- "Phage"
+gfp.DSM.controls.1parms$treatment <- "Control"
+
+# Combine both
+gfp_DSM_lcombo <- rbind(gfp.DSM.bbphage.1parms, gfp.DSM.controls.1parms)
+
+# Plot
+ggplot(gfp_DSM_lcombo, aes(x = treatment, y = L)) +
+  geom_boxplot(outlier.shape = NA, fill = "#94f293", alpha = 0.5) +
+  #stat_summary(fun = mean, geom = "point", shape = 20, size = 3, color = "red") +
+  #stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2, color = "red") +
+  geom_jitter(width = 0.1, size = 2, alpha = 0.7) +
+  labs(
+    x = "Treatment",
+    y = "GFP Onset time (hours)",
+    title = "DSM Spo0A:GFP onset time comparison"
+  ) +
+  theme_mininal()
+  
+  
+  
+# Plot for publication 
+ggplot(gfp_DSM_lcombo, aes(x = treatment, y = L)) +
+  geom_boxplot(outlier.shape = NA, fill = "#94f293", alpha = 0.5) +
+  geom_jitter(width = 0.1, size = 2, alpha = 0.7) +
+  labs(
+    x = "Treatment",
+    y = "GFP Onset time (hours)",
+    title = "DSM Spo0A:GFP onset time comparison"
+  ) +
+  theme_minimal() +  # Add minimal theme first
+  theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    plot.background = element_blank()
+  ) +
+  annotate("text", x = 2, y = 23, label = "ANOVA p = 0.549", color = "black", size = 5)
+
+```
+Running ANOVA on this data
+```{r}
+anova.DSM <- aov(L ~ treatment, data = gfp_DSM_lcombo)
+summary(anova.DSM)
+
+```
+
+
+
+```
+

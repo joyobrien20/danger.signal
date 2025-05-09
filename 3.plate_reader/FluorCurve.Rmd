@@ -8,8 +8,8 @@ output: html_document
 ## Clear workspace and set directory
 ```{r setup}
 rm(list=ls())
-setwd("~/GitHub/danger.signal/scripts/GrowthCurves")
-knitr::opts_knit$set(root.dir = "~/GitHub/danger.signal/scripts/GrowthCurves")
+setwd("~/GitHub/danger.signal/3.plate_reader/GrowthCurves")
+knitr::opts_knit$set(root.dir = "~/GitHub/danger.signal/3.plate_reader/GrowthCurves")
 
 ```
 
@@ -22,7 +22,7 @@ require("gtools")
 require("nlme")
 require("MuMIn")
 require("bbmle")
-source("~/GitHub/danger.signal/scripts/GrowthCurves/bin/modified_Gomp_diagnostic3.R")
+source("~/GitHub/danger.signal/3.plate_reader/GrowthCurves/bin/modified_Gomp_diagnostic3.R")
 sem <- function(x) sqrt(var(x)/length(x))
 cv <- function(x) 100*( sd(x)/mean(x))
 ```
@@ -40,7 +40,7 @@ cv <- function(x) 100*( sd(x)/mean(x))
 #gfp<- subset(gfp, select = -c(A2, A3, A5, A6, A8, A9, A11, A12, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, D2, D3, D5, D6, D8, D9, D11, D12, E1, E2, E3, E4, E5, E6, E7, E8, E9, E10, E11, E12, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, G2, G3, G5, G6, G8, G9, G11, G12, H1, H2, H3, H4, H5, H6, H7, H8, H9, H10, H11, H12))
 
 
-gfp <- read.csv("~/GitHub/danger.signal/scripts/GrowthCurves/data/20250213_spo0agfp_gfp_reads.csv")
+gfp <- read.csv("~/GitHub/danger.signal/3.plate_reader/GrowthCurves/Data/20250213_spo0agfp_gfp_reads.csv")
 # Remove data from empty wells (WT dataset)
 # gfp <- subset(gfp, select = -c(A2, A3, A5, A6, A8, A9, A11, A12, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, D2, D3, D5, D6, D8, D9, D11, D12, E1, E2, E3, E4, E5, E6, E7, E8, E9, E10, E11, E12, F1, F2, F3, F4, F5, F6, F7, F8, F9, F11, F12, G2, G3, G5, G6, G8, G9, G11, G12, H2, H3, H5, H6, H7, H8, H9, H10, H11, H12))
 
@@ -143,17 +143,17 @@ head(gfp, header = T)
 
 ```{r}
 # Rescale the data before transforming
-rescale_minmax <- function(x, lower = 1, upper = 10) {
-  return(lower + (x - min(x)) / (max(x) - min(x)) * (upper - lower))
-}
+#rescale_minmax <- function(x, lower = 1, upper = 10) {
+  #return(lower + (x - min(x)) / (max(x) - min(x)) * (upper - lower))
+#}
 # Trying Z-score normalization/rescaling
 #zscore_normalization <- function(x) {
  # return((x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE))
 #}
 
 # Specify columns to scale
-columns_to_scale <- c("A7", "A10", "D1", "D4", "D7", "D10", "G1", "G4", "G10")
-gfp[columns_to_scale] <- lapply(gfp[columns_to_scale], rescale_minmax)
+#columns_to_scale <- c("A7", "A10", "D1", "D4", "D7", "D10", "G1", "G4", "G10")
+#gfp[columns_to_scale] <- lapply(gfp[columns_to_scale], rescale_minmax)
 
 # Log10 transforming the fluorescence data before analysis? 
 #gfp.new[, 3:11] <- apply(gfp.new[, 3:11], 2, log10) # this is for working with the dataset when the data is de-trended from the reporter controls and the WT controls
@@ -190,13 +190,13 @@ gfp.cDSM.controls <- gfp[,c(1,10,11)]
 
 # Find the mean for each sample type (plotting the mean for the reps for meeting with Joshua)
 # Doing this for DSM samples as well
-gfp.DSM.controls_avg <- gfp.DSM.controls %>%
-   mutate(mean_gfp = rowMeans(select(., A7, A10), na.rm = TRUE)) %>%
-   select(Time, mean_gfp)
+#gfp.DSM.controls_avg <- gfp.DSM.controls %>%
+   #mutate(mean_gfp = rowMeans(select(., A7, A10), na.rm = TRUE)) %>%
+   #select(Time, mean_gfp)
 
-gfp.DSM.BBphage_avg <- gfp.DSM.BBphage %>%
-   mutate(mean_gfp = rowMeans(select(., D1, D4, D7), na.rm = TRUE)) %>%
-   select(Time, mean_gfp)
+#gfp.DSM.BBphage_avg <- gfp.DSM.BBphage %>%
+   #mutate(mean_gfp = rowMeans(select(., D1, D4, D7), na.rm = TRUE)) %>%
+   #select(Time, mean_gfp)
 # 
 # gfp.HTphage_avg <- gfp.HTphage %>%
 #   mutate(mean_gfp = rowMeans(select(., D7, D10, G1), na.rm = TRUE)) %>%
@@ -249,9 +249,11 @@ gfp.DSM.BBphage_avg <- gfp.DSM.BBphage %>%
 
 # Run Gompertz (only need to run once then comment out)
 
+Note to self: If we decide that we need to work on the cDSM data, then come back to this to get fixed param.s based on non-transformed data/non-rescaled data -- pick up with running Gompertz on cDSM non rescaled data
+
 ```{r}
 setwd("~/GitHub/danger.signal/scripts/GrowthCurves/bin")
-gfp.DSM.controls_avg.2 <- growth.modGomp(input = gfp.DSM.controls_avg, output.name = "gfp.DSM.controls_avg.2.parms",
+gfp.cDSM.BBphage.nt <- growth.modGomp(input = gfp.cDSM.BBphage, output.name = "gfp.cDSM.BBphage.parms",
                  synergy = F, temp = F, smooth = T, trim = T)
 #gfp.cDSM.controls.1 <- growth.modGomp(input = gfp.cDSM.controls,output.name = "gfp.cDSM.controls.1.parms",
                   #synergy = F, temp = F, smooth = T, trim = T)
@@ -270,10 +272,10 @@ gfp.DSM.BBphage_avg.out.2 <- read.table("~/GitHub/danger.signal/scripts/GrowthCu
 ```
 # Retrieve output params (20250213 plate)
 ```{r}
-gfp_DSM_controls.out.1 <- read.table("~/GitHub/danger.signal/scripts/GrowthCurves/output/gfp.DSM.controls.1.parms.txt", sep = ",", header=TRUE)
-gfp_cDSM_controls.out.1 <- read.table("~/GitHub/danger.signal/scripts/GrowthCurves/output/gfp.cDSM.controls.1.parms.txt", sep = ",", header=TRUE)
-gfp_DSM_BBphage.out.1 <- read.table("~/GitHub/danger.signal/scripts/GrowthCurves/output/gfp.DSM.BBphage.1.parms.txt", sep = ",", header=TRUE)
-gfp_cDSM_BBphage.out.1 <- read.table("~/GitHub/danger.signal/scripts/GrowthCurves/output/gfp.cDSM.BBphage.1.parms.txt", sep = ",", header=TRUE)
+#gfp_DSM_controls.out.1 <- read.table("~/GitHub/danger.signal/scripts/GrowthCurves/output/gfp.DSM.controls.1.parms.txt", sep = ",", header=TRUE)
+gfp_cDSM_controls.out.1 <- read.table("~/GitHub/danger.signal/3.plate_reader/GrowthCurves/output/gfp.cDSM.controls.1.parms.txt", sep = ",", header=TRUE)
+#gfp_DSM_BBphage.out.1 <- read.table("~/GitHub/danger.signal/scripts/GrowthCurves/output/gfp.DSM.BBphage.1.parms.txt", sep = ",", header=TRUE)
+gfp_cDSM_BBphage.out.1 <- read.table("~/GitHub/danger.signal/3.plate_reader/GrowthCurves/output/gfp.cDSM.BBphage.1.parms.txt", sep = ",", header=TRUE)
 ```
 
 ```{r}
