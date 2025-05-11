@@ -9,26 +9,26 @@ output: html_document
 setwd("~/GitHub/danger.signal/2.square_plate")
 ```
 
-Load in all data
+1. Load in all data
 ```{r}
 library(readxl)
 # Read in the measurements
-h11 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/11h.csv")
-h12 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/12h.csv")
-h13 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/13h.csv")
-h14 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/14h.csv")
-h15 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/15h.csv")
-h16 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/16h.csv")
-h17 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/17h.csv")
-h18 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/18h.csv")
-h19 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/19h.csv")
-h23 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/23h.csv")
+h11 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/11h_redo.csv")
+h12 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/12h_redo.csv")
+h13 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/13h_redo.csv")
+h14 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/14h_redo.csv")
+h15 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/15h_redo.csv")
+h16 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/16h_redo.csv")
+h17 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/17h_redo.csv")
+h18 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/18h_redo.csv")
+h19 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/19h_redo.csv")
+h23 <- read.csv("~/GitHub/danger.signal/2.square_plate/Data/23h_redo.csv")
 
 # Read in the metadata
 meta <- read_xlsx("~/GitHub/danger.signal/2.square_plate/Data/square_plate_meta.xlsx", sheet = "Sheet1")
 ```
 
-Add a Time column in each of the datasets
+1A. Add a Time column in each of the datasets
 ```{r}
 library(dplyr)
 h11 <- h11 %>%
@@ -61,19 +61,76 @@ h23 <- h23 %>%
   mutate(Time_h = 23)
 ```
 
-Combine all data to one giant dataset
+1B. Combine all data to one giant dataset
 ```{r}
 square.plate <- bind_rows(h11,h12,h13,h14,h15,h16,h17,h18,h19,h23)
 
+# Rename X to Sample_ID
+square.plate <- square.plate %>%
+  rename(Sample_ID = X)
+
 # Remove columns we don't need
 #square.plate <- square.plate %>%
- # select(-X, -Time)
+ #select(-X, -Time-h)
 
 # Add the metadata 
 library(dplyr)
 
 square.plate.meta <- left_join(square.plate, meta, by = c("Sample_ID", "Time_h"))
+```
 
+1C. Normalize samples by their dilution factor
+```{r}
+# Add a column specifying dilution for each sample
+library(dplyr)
+library(stringr)
+
+square.plate.norm <- square.plate.meta %>%
+  mutate(
+    Dilution = str_extract(Sample, "e\\d+") %>%       # extract 'e1', 'e2', etc.
+               str_remove("e") %>%                    # remove the 'e'
+               as.numeric() %>%                       # convert to number
+               (\(x) 10^(-x))()                       # convert to 10^-x
+  )
+# Normalize pixel intensity (IntDen) by the dilution factor
+square.plate.norm <- square.plate.norm %>%
+  mutate(
+    Mean_norm = Mean / Dilution,
+    IntDen_norm = IntDen / Dilution,
+    RawIntDen_norm = RawIntDen / Dilution
+  )
+
+
+# Average the background values for each timepoint and subtract to obtain pixel value
+# Compute background averages per timepoint and subtract samples based on the mean background for each timepoint
+background_means <- square.plate.norm %>%
+  filter(Treatment == "Background") %>%
+  group_by(Time_h) %>%
+  summarise(across(c(Area, Mean, Min, Max, IntDen, RawIntDen), mean, .names = "bg_{.col}"))
+
+# Merge background values back into original dataset by Time_h
+square.plate.bg <- square.plate.norm %>%
+  left_join(background_means, by = "Time_h") %>%
+  mutate(
+    Area_corr = Area - bg_Area,
+    Mean_corr = Mean - bg_Mean,
+    Min_corr = Min - bg_Min,
+    Max_corr = Max - bg_Max,
+    IntDen_corr = IntDen - bg_IntDen,
+    RawIntDen_corr = RawIntDen - bg_RawIntDen
+  )
+# Create dataset with only the corrected values and sample identifiers
+square.plate.corr <- square.plate.bg %>%
+  select(Sample_ID, Sample, Treatment, Time_h,
+         Area_corr, Mean_corr, Min_corr, Max_corr,
+         IntDen_corr, RawIntDen_corr)
+
+# Create new dataset that is the corrected values only 
+# Remove the samples that contain background
+```
+
+
+```{r}
 # Rescale?
 #rescale_minmax <- function(x, lower = 1, upper = 10) {
   #return(lower + (x - min(x)) / (max(x) - min(x)) * (upper - lower))
@@ -89,11 +146,11 @@ square.plate.meta <- left_join(square.plate, meta, by = c("Sample_ID", "Time_h")
 
 ```
 
-Plot
+1D. Plot (first look)
 ```{r}
 library(ggplot2)
-# Subset the data 
-ggplot(square.plate.meta, aes(x = Time_h, y = IntDen, color = Treatment)) +
+
+ggplot(square.plate.corr, aes(x = Time_h, y = IntDen_corr, color = Treatment)) +
   #geom_line() +
   geom_smooth(span = 0.4, alpha = 0.2) +
   #geom_smooth(span, se = TRUE, alpha = 0.2) +
@@ -111,14 +168,16 @@ ggplot(square.plate.meta, aes(x = Time_h, y = IntDen, color = Treatment)) +
     theme_minimal()
   )
 ```
+1E. Plot (clean for publication)
 ```{r}
 library(ggplot2)
-# Subset the data 
-ggplot(square.plate.meta, aes(x = Time_h, y = IntDen, color = Treatment)) +
+
+ggplot(square.plate.corr, aes(x = Time_h, y = IntDen_corr, color = Treatment)) +
   #geom_line() +
   geom_smooth(span = 0.4, alpha = 0.2) +
+  #scale_y_log10() +
   #geom_smooth(span, se = TRUE, alpha = 0.2) +
-  #geom_point() +() +
+  #geom_point() +
   labs(
     title = "",
     x = "Time (hours)",
@@ -134,25 +193,27 @@ ggplot(square.plate.meta, aes(x = Time_h, y = IntDen, color = Treatment)) +
     plot.background = element_blank(),  # removes background around the plot
     theme_minimal()  # minimal theme
   ) + 
-   annotate("text", x = 20, y = 70000, label = "Rm-ANOVA p = 0.0446*", color = "black", size = 5)
+   annotate("text", x = 20, y = 10000, label = "Rm-ANOVA p = 0.0001*", color = "black", size = 5)
 ```
 
-Rescale the data? 
-```{r}
 
-```
-
-Replot
-
+2. Prep for RM-ANOVA
 ```{r}
 # Before running repeated measures anova remove the WT control from the samples (same thing as a blank?)
-square.plate.meta.noWT <- square.plate.meta %>%
+square.plate.meta.noWT <- square.plate.corr %>%
   filter(Treatment != "Non_reporter_control")
+# And remove the blank 
+square.plate.meta.noWTBL <- square.plate.meta.noWT %>%
+  filter(Treatment != "Background")
+
+#square.plate.meta.noWTBL <- square.plate.meta.noWTBL %>%
+  #filter(Treatment != "water")
+
 ```
 
-Run RM-ANOVA
+2A. Repeated-Measures ANOVA
 ```{r}
-aov_result_sp <- aov(IntDen ~ Treatment * Time_h + Error(Sample / Time_h), data = square.plate.meta.noWT)
+aov_result_sp <- aov(IntDen_corr ~ Treatment * Time_h + Error(Sample / Time_h), data = square.plate.meta.noWTBL)
 summary(aov_result_sp)
 
 library(emmeans)
@@ -160,4 +221,272 @@ library(emmeans)
 emmeans_result_sp <- emmeans(aov_result_sp, ~ Treatment | Time_h)
 pairs(emmeans_result_sp)
 ```
-Now that I am looking at this data I am unsure how to account for the dilutions
+
+3. Set up to apply data to Gompertz (running into issues here)
+```{r}
+setwd("~/GitHub/danger.signal/2.square_plate/GrowthCurves")
+```
+
+```{r}
+# Load packages and functions
+require("png")
+require("dplyr")
+require("grid")
+require("gtools")
+require("nlme")
+require("MuMIn")
+require("bbmle")
+source("~/GitHub/danger.signal/2.square_plate/GrowthCurves/bin/modified_Gomp_diagnostic3.R")
+sem <- function(x) sqrt(var(x)/length(x))
+cv <- function(x) 100*( sd(x)/mean(x))
+```
+
+3A. Load data (already loaded)
+```{r}
+square.plate.corr
+```
+
+3B. Wrangle data (group samples by treatment)
+```{r}
+library(dplyr)
+# Trying this out first with water data first to make sure it goes smoothly
+sp.water <- square.plate.corr %>%
+  filter(Treatment %in% c("water"))
+sp.DSM <- square.plate.corr %>%
+  filter(Treatment %in% c("DSM"))
+sp.spent.DSM <- square.plate.corr %>%
+  filter(Treatment %in% c("Spent_DSM"))
+sp.SC.spent <- square.plate.corr %>%
+  filter(Treatment %in% c("Scells_Spent_DSM"))
+sp.phage <- square.plate.corr %>%
+  filter(Treatment %in% c("Phage_Spent_DSM"))
+
+# Get rid of unnecessary data
+sp.water.clean <- sp.water %>%
+  select(Time_h, Sample, IntDen_corr)
+
+sp.DSM.clean <- sp.DSM %>%
+  select(Time_h, Sample, IntDen_corr)
+
+sp.spent.DSM.clean <- sp.spent.DSM %>%
+  select(Time_h, Sample, IntDen_corr)
+
+sp.SC.spent.clean <- sp.SC.spent %>%
+  select(Time_h, Sample, IntDen_corr)
+
+sp.phage.clean <- sp.phage %>%
+  select(Time_h, Sample, IntDen_corr)
+``` 
+
+3B. Continue to wrangle data (wide format)
+```{r}
+
+# Transform to wide format so we can run the model
+library(tidyr)
+sp.water.wide <- sp.water.clean %>%
+  pivot_wider(names_from = Sample, values_from = IntDen_corr)
+
+sp.DSM.wide <- sp.DSM.clean %>%
+  pivot_wider(names_from= Sample, values_from = IntDen_corr)
+
+sp.spent.wide <- sp.spent.DSM.clean %>%
+  pivot_wider(names_from= Sample, values_from = IntDen_corr)
+
+sp.SC.spent.wide <- sp.SC.spent.clean %>%
+  pivot_wider(names_from= Sample, values_from = IntDen_corr)
+
+sp.phage.wide <- sp.phage.clean %>%
+  pivot_wider(names_from= Sample, values_from = IntDen_corr)
+
+# Change the Time_h to Time
+sp.water.wide <- sp.water.wide %>%
+  rename(Time = Time_h)
+
+sp.DSM.wide <- sp.DSM.wide %>%
+  rename(Time = Time_h)
+
+sp.spent.wide <- sp.spent.wide %>%
+  rename(Time = Time_h)
+
+sp.SC.spent.wide <- sp.SC.spent.wide %>%
+  rename(Time = Time_h)
+
+sp.phage.wide <- sp.phage.wide %>%
+  rename(Time = Time_h)
+
+# OKAY THIS IS THE FORMAT WE WANT!
+```
+
+3C. Run Gompertz model (under construction)
+```{r}
+# Running Gompertz on water data to make sure it runs smoothly
+setwd("~/GitHub/danger.signal/2.square_plate/GrowthCurves/bin")
+sp.water.1 <- growth.modGomp(input = sp.water.wide, output.name = "sp.water.1.parms",
+                 synergy = F, temp = F, smooth = T, trim = T)
+
+# Same error as the flow cytometry data -- > go under Gompertz hood
+[1] Starting Sample Water_e1 (1 of 6)
+Error in ts(x) : 'ts' object must have one or more observations
+
+# Checking some things that may be associated with the error
+samples[!samples %in% colnames(sp.water.wide)] # okay samples are not found so this means
+samples <- setdiff(colnames(sp.water.wide), "Time")
+samples[!samples %in% colnames(sp.water.wide)]
+
+#sp.water.wide$Time<- format(strptime(sp.water.wide$Time, format = "%H"), "%H:%M")
+#head(sp.water.wide, header = T)
+
+sp.water.wide.df <- as.data.frame(sp.water.wide)
+# Okay we specified samples, now let's try again
+setwd("~/GitHub/danger.signal/2.square_plate/GrowthCurves/bin")
+sp.water.1 <- growth.modGomp(input = sp.water.wide.df, output.name = "sp.water.1.parms",
+                 synergy = F, temp = F, smooth = F, trim = T)
+
+
+# Okay things that I needed to fix: 
+# as.data.frame needed for running gompertz
+# specified samples
+# Smoothing = F
+
+```
+
+```{r}
+# Further debugging
+#Error in ts(x) : 'ts' object must have one or more observations
+
+print(head(sp.water.wide))  # Inspect the first few rows
+print(length(sp.water.wide$y))  # Check the number of observations
+print(sum(is.na(sp.water.wide$y)))  # Check for missing values
+```
+
+
+
+
+4. Attempting to obtain parameters via GrowthCurver package (back up method?)
+```{r}
+# Make all data.frames
+sp.water.wide.df <- as.data.frame(sp.water.wide)
+sp.DSM.wide.df <- as.data.frame(sp.DSM.wide)
+sp.spent.wide.df <- as.data.frame(sp.spent.wide)
+sp.SC.spent.wide.df <- as.data.frame(sp.SC.spent.wide)
+sp.phage.wide.df <- as.data.frame(sp.phage.wide)
+
+
+library(growthcurver)
+# Time should not be in 00:00 format
+
+water.plate <- sp.water.wide.df
+  names(water.plate)
+  
+DSM.plate <- sp.DSM.wide.df
+  names(DSM.plate)
+  
+spent.plate <- sp.spent.wide.df 
+  names(spent.plate)
+
+SC.spent.plate <- sp.SC.spent.wide.df
+  names(SC.spent.plate)
+
+phage.plate <- sp.phage.wide.df
+  names(phage.plate)
+  
+#obtain growth parms
+
+water.plate.summary <-SummarizeGrowthByPlate(plate = water.plate)
+head(water.plate.summary)
+
+DSM.plate.summary <- SummarizeGrowthByPlate(plate = DSM.plate)
+head(DSM.plate.summary)
+
+spent.plate.summary <- SummarizeGrowthByPlate(plate = spent.plate)
+head(spent.plate.summary)
+
+SC.spent.plate.summary <- SummarizeGrowthByPlate(plate = SC.spent.plate)
+head(SC.spent.plate.summary)
+
+phage.plate.summary <- SummarizeGrowthByPlate(plate = phage.plate)
+head(phage.plate.summary)
+```
+
+Now calculate lag time
+```{r}
+# Calculate lag time 
+water.plate.summary$lag_time <- water.plate.summary$t_mid - (1 / water.plate.summary$r)
+DSM.plate.summary$lag_time <- DSM.plate.summary$t_mid - (1 / DSM.plate.summary$r)
+spent.plate.summary$lag_time <- spent.plate.summary$t_mid - (1 / spent.plate.summary$r)
+SC.spent.plate.summary$lag_time <- SC.spent.plate.summary$t_mid - (1 / SC.spent.plate.summary$r)
+phage.plate.summary$lag_time <- phage.plate.summary$t_mid - (1 / phage.plate.summary$r)
+
+# Combine into one df but first add treatments
+water.plate.summary$Treatment <- "Water"
+DSM.plate.summary$Treatment <- "DSM"
+spent.plate.summary$Treatment <- "Spent"
+SC.spent.plate.summary$Treatment <- "SC_Spent"
+phage.plate.summary$Treatment <- "Phage"
+
+lag_data <- bind_rows(
+  water.plate.summary,
+  DSM.plate.summary,
+  spent.plate.summary,
+  SC.spent.plate.summary,
+  phage.plate.summary
+)
+```
+
+```{r}
+library(ggplot2)
+
+ggplot(lag_data, aes(x = Treatment, y = lag_time, fill = Treatment)) +
+  geom_boxplot() +
+  labs(title = "",
+       x = "Treatment",
+       y = "Lag Time (h)") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+```
+
+```{r}
+# ANOVA
+anova.lag <- aov(lag_time ~ Treatment, data = lag_data)
+summary(anova.lag)
+```
+
+```{r}
+# Plot for publication 
+ggplot(lag_data, aes(x = Treatment, y = lag_time)) +
+  geom_boxplot(outlier.shape = NA, fill = "#94f293", alpha = 0.5) +
+  geom_jitter(width = 0.1, size = 2, alpha = 0.7) +
+  labs(
+    x = "Treatment",
+    y = "GFP Onset time (hours)",
+    title = ""
+  ) +
+  theme_minimal() +  # Add minimal theme first
+  theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    plot.background = element_blank()
+  ) +
+  annotate("text", x = 2, y = 17, label = "ANOVA p = 0.153", color = "black", size = 5)
+```
+
+
+
+```{r}
+# okay we can get lag time this way, so now we need to rinse and repeat for each treatment, and then greate a large plot showing each treatment
+
+# New order of op:
+# separate data out by treatment 
+# run growthcurver
+# obtain lag time 
+# Repeat for each treatment
+# Merge all lag time variables together into one df
+# Add a column called treatment 
+# Box plot and ANOVA
+
+
+```
+
