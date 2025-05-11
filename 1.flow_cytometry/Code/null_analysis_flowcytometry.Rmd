@@ -40,35 +40,13 @@ ggplot(flow.spore, aes(x = time.hr, y = spore.ml, color = trt)) +
 
 
 ```
-Growth curve analysis gcplyr (Gompertz)
+
+
+2A. Repeated measures ANOVA
 ```{r}
-# Removing some columns we don't need 
-# Rename some columns 
-fc.buffer.gc <- fc.buffer %>%
-  select(-sample.date, -exp.plate, -t.exp, -veg.ml, -cell.ml, -trt)
 
-#install.packages("gcplyr")
-library(gcplyr)
-
-fc.buffer.fits <- MinMaxGC(
-  data = fc.buffer.gc,
-  time_col = "time.hr",
-  data_col = "spore.ml",
-  sample_col = "bio.rep",
-  model = "gompertz"
-)
-
-```
-
-
-
-
-2A.Repeated measures Anova
-
-```{r}
 aov_result <- aov(spore.ml ~ trt * time.hr + Error(bio.rep/time.hr), data = flow.spore)
 summary(aov_result)
-
 
 ```
 Given the outputs of the Rm-ANOVA we know: 
@@ -132,28 +110,213 @@ flow.spore <- read.csv("~/GitHub/danger.signal/1.flow_cytometry/Data/clean_count
 
 ```
 
-Group samples by treatment
+
+3B. Wrangle data before GrowthCurver analysis
+
 ```{r}
+# Group by treatment
+
 fc.buffer <- flow.spore %>%
   filter(trt %in% c("BUFFER"))
 
+fc.DSM <- flow.spore %>%
+  filter(trt %in% ("DSM"))
+
+fc.lysate <- flow.spore %>%
+  filter(trt %in% ("LYSATE"))
+
+fc.spent <- flow.spore %>%
+  filter(trt %in% ("SPENT") )
+
+# Convert to wide
+fc.buffer.wide<- fc.buffer %>%
+  pivot_wider(names_from = bio.rep, values_from = spore.ml)
+
+fc.DSM.wide <- fc.DSM %>%
+  pivot_wider(names_from = bio.rep, values_from = spore.ml)
+
+fc.lysate.wide <- fc.lysate %>%
+  pivot_wider(names_from = bio.rep, values_from = spore.ml)
+
+fc.spent.wide <- flow.spore %>%
+  pivot_wider(names_from = bio.rep, values_from = spore.ml)
+
+# Change time 
+fc.buffer.wide <- fc.buffer.wide %>%
+  rename(Time = time.hr)
+
+fc.DSM.wide <- fc.DSM.wide %>%
+  rename(Time = time.hr)
+
+fc.lysate.wide <- fc.lysate.wide %>%
+  rename(Time = time.hr)
+
+fc.spent.wide <- fc.spent.wide %>%
+  rename(Time = time.hr)
+
+
+# Collapse multiple rows per time point via dplyr
+fc.buffer.wide <- fc.buffer.wide %>%
+  group_by(Time) %>%
+  summarise(across(everything(), ~ first(na.omit(.))), .groups = "drop")
+
+fc.DSM.wide <- fc.DSM.wide %>%
+  group_by(Time) %>%
+  summarise(across(everything(), ~ first(na.omit(.))), .groups = "drop")
+
+fc.lysate.wide <- fc.lysate.wide %>%
+  group_by(Time) %>%
+  summarise(across(everything(), ~ first(na.omit(.))), .groups = "drop")
+
+fc.spent.wide <- fc.spent.wide %>%
+  group_by(Time) %>%
+  summarise(across(everything(), ~ first(na.omit(.))), .groups = "drop")
+
+# Remove data that is not needed
+fc.buffer.wide<- fc.buffer.wide %>%
+  select(-sample.date, -exp.plate, -t.exp, -veg.ml, -cell.ml, -trt)
+
+fc.DSM.wide<- fc.DSM.wide %>%
+  select(-sample.date, -exp.plate, -t.exp, -veg.ml, -cell.ml, -trt)
+
+fc.lysate.wide<- fc.lysate.wide %>%
+  select(-sample.date, -exp.plate, -t.exp, -veg.ml, -cell.ml, -trt)
+
+fc.spent.wide<- fc.spent.wide %>%
+  select(-sample.date, -exp.plate, -t.exp, -veg.ml, -cell.ml, -trt)
+
+
+```
+
+Setting up to run Gompertz via GrowthCurver
+```{r}
+fc.buffer.wide.df <- as.data.frame(fc.buffer.wide)
+fc.DSM.wide.df <- as.data.frame(fc.DSM.wide)
+fc.lysate.wide.df <- as.data.frame(fc.lysate.wide)
+fc.spent.wide.df <- as.data.frame(fc.spent.wide)
+
+library(growthcurver)
+# Time should not be in 00:00 format
+
+buffer.plate <- fc.buffer.wide.df
+  names(buffer.plate)
+
+DSM.plate <- fc.DSM.wide.df
+  names(DSM.plate)
+
+lysate.plate <- fc.lysate.wide.df
+  names(lysate.plate)
+
+spent.plate <- fc.spent.wide.df
+  names(spent.plate)
+
+# Run the growth curve analysis
+buffer.plate.summary <-SummarizeGrowthByPlate(plate = buffer.plate)
+head(buffer.plate.summary)
+
+DSM.plate.summary <-SummarizeGrowthByPlate(plate = DSM.plate)
+head(DSM.plate.summary)
+
+lysate.plate.summary <-SummarizeGrowthByPlate(plate = lysate.plate)
+head(lysate.plate.summary)
+
+spent.plate.summary <- SummarizeGrowthByPlate(plate = spent.plate)
+head(spent.plate.summary)
+
+# Calculate lag time for all
+buffer.plate.summary$lag_time <- buffer.plate.summary$t_mid - (1 / buffer.plate.summary$r)
+DSM.plate.summary$lag_time <- DSM.plate.summary$t_mid - (1 / DSM.plate.summary$r)
+lysate.plate.summary$lag_time <- lysate.plate.summary$t_mid - (1 / lysate.plate.summary$r)
+spent.plate.summary$lag_time <- spent.plate.summary$t_mid - (1 / spent.plate.summary$r)
+
+
+
+#Combine into one df but first add treatments
+buffer.plate.summary$Treatment <- "Buffer"
+DSM.plate.summary$Treatment <- "DSM"
+spent.plate.summary$Treatment <- "Spent"
+lysate.plate.summary$Treatment <- "Lysate"
+
+
+lag_data <- bind_rows(
+  buffer.plate.summary,
+  DSM.plate.summary,
+  spent.plate.summary,
+  lysate.plate.summary
+)
+```
+```{r}
+# Plot for publication 
+ggplot(lag_data, aes(x = Treatment, y = lag_time)) +
+  geom_boxplot(outlier.shape = NA, fill = "#94f293", alpha = 0.5) +
+  geom_jitter(width = 0.1, size = 2, alpha = 0.7) +
+  labs(
+    x = "Treatment",
+    y = "GFP Onset time (hours)",
+    title = ""
+  ) +
+  theme_minimal() +  # Add minimal theme first
+  theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    plot.background = element_blank()
+  ) +
+  annotate("text", x = 2, y = 17, label = "ANOVA p = 0.731", color = "black", size = 5)
+```
+```{r}
+# ANOVA
+anova.lag <- aov(lag_time ~ Treatment, data = lag_data)
+summary(anova.lag)
+```
+
+
+```{r}
+
+```
+
+
+
+
+
+
+3B. Wrangle data (trying this on one subset of data before doing all treatments)
+```{r}
+# Separate data out by experimental plate 
+# fc.buffer.exp1 <- fc.buffer %>%
+#   filter(exp.plate == "plt1")
+# 
+# fc.buffer.exp2 <- fc.buffer %>%
+#   filter(exp.plate == "plt2")
+
+# Rename the sample names so we know the treatment
+
+
+# Transform to wide format so we can run the model
+library(tidyr)
+
+fc.buffer.wide<- fc.buffer %>%
+  pivot_wider(names_from = bio.rep, values_from = spore.ml)
+
+fc.buffer.wide <- fc.buffer.wide %>%
+  rename(buffer_br1 = br1)
+
+fc.buffer.wide <- fc.buffer.wide.exp1 %>%
+ rename(buffer_br2 = br2)
+
+fc.buffer.wide.exp1 <- fc.buffer.wide.exp1 %>%
+  rename(buffer_br3 = br3)
+
+# Rename some columns 
+fc.buffer.wide <- fc.buffer.wide %>%
+  rename(Time = time.hr)
 # Separate out by experimental plate too?
 fc.buffer.exp1 <- fc.buffer %>%
   filter(exp.plate == "plt1")
 
 fc.buffer.exp2 <- fc.buffer %>%
   filter(exp.plate == "plt2")
-
-# Transfer to wide format so we can run the model
-library(tidyr)
-
-fc.buffer.wide.exp1 <- fc.buffer.exp1 %>%
-  pivot_wider(names_from = bio.rep, values_from = spore.ml)
-
-
-# Rename some columns 
-fc.buffer.wide.exp1 <- fc.buffer.wide.exp1 %>%
-  rename(Time = time.hr)
 
 # Average across biological replicates?
 
@@ -183,18 +346,7 @@ fc.buffer.wide.clean.exp1 <- fc.buffer.wide.clean.exp1 %>%
 ```
 
 
-```{r}
-fc.DSM <- flow.spore %>%
-  filter(trt %in% c("DSM"))
-
-fc.lysate <- flow.spore %>%
-  filter(trt %in% c("LYSATE"))
-
-fc.spent <- flow.spore %>%
-  filter(trt %in% c("SPENT"))
-```
-
-Run Gompertz
+3D. Run Gompertz
 ```{r}
 setwd("~/GitHub/danger.signal/1.flow_cytometry/GrowthCurves/bin")
 fc.buffer.1 <- growth.modGomp(input = fc.buffer.wide.clean.exp1, output.name = "fc.buffer.exp1.1.parms",
@@ -211,13 +363,10 @@ fc.lysate.1  <- growth.modGomp(input = fc.lysate.1, output.name = "fc.lysate.1.p
                  synergy = F, temp = F, smooth = T, trim = T)
 fc.spent.1 <- growth.modGomp(input = fc.spent.1, output.name = "fc.spent.1.parms",
                synergy = F, temp = F, smooth = T, trim = T)
-```
-
-Going rouge for a minute and trying something other than Gompertz for these types of estimations
-```{r}
-library(gcplyr)
 
 ```
+
+
 
 
 

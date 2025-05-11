@@ -322,7 +322,7 @@ emmeans_result_cDSM <- emmeans(aov_result_cDSM, ~ treatment | Time)
 pairs(emmeans_result_cDSM)
 ```
 
-4. Moving on to compare Gompertz estimated onset parameters (cDSM first) -- come back and check why the lag times are weird
+4. Moving on to compare Gompertz estimated onset parameters (cDSM first)
 ```{r}
 # Since this data was previously run through Gompertz already, we just need to call the params
 # Loading cDSM params data
@@ -330,9 +330,9 @@ library(readr)
 gfp.cDSM.controls.1parms <- read.csv("~/GitHub/danger.signal/3.plate_reader/GrowthCurves/output/gfp.cDSM.controls.1.parms.txt",header = TRUE)
 gfp.cDSM.bbphage.1parms <- read.csv("~/GitHub/danger.signal/3.plate_reader/GrowthCurves/output/gfp.cDSM.BBphage.1.parms.txt", header = TRUE)
 
-#cDSM params aren't making sense to me, need to go back and check what happened 
+# cDSM params aren't making sense to me, need to go back and check what happened 
+# Coming back to this, cDSM data was a wash need to proceed with DSM data
 ```
-
 
 
 

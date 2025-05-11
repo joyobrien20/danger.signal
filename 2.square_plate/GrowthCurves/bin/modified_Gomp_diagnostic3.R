@@ -18,8 +18,9 @@
 growth.modGomp <- function(input = " ", output.name = " ", skip = "", 
                            output.dir = "../output/",
                            intercept.guess = 0.1, delta = 0.05,
-                           synergy = T, temp = T, smooth = T, trim = T){
-    # Input = Raw txt output file from Synergy MX
+                           synergy = F, temp = F, smooth = F, trim = T){
+    # Changed synergy = F, temp = F to see if this fixes
+  # Input = Raw txt output file from Synergy MX
     # Intercept.guess = initial guess for y intercept
     # delta = minimum change in OD required for analysis
     # synergy = TRUE if the data comes from the synergy mx machine
@@ -82,7 +83,7 @@ growth.modGomp <- function(input = " ", output.name = " ", skip = "",
 
     # Extract Data
     t <- data.in$Time
-    s <- data.in[,which(colnames(data.in) == samples[i])]
+    s <- data.in[,which(colnames(data.in) == samples[i])] # this is where the ts() error is coming from; this was changed from the original code
     if (max(s) - min(s) < delta) {
       plot(s ~ t, main=samples[i], 
            ylab=expression(paste("RFU")), 
