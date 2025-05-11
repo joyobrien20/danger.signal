@@ -1,0 +1,1 @@
+Curve,b0,b0.se,A,A.se,umax,umax.se,L,L.se,RSME,CV,outlier
