@@ -26,6 +26,36 @@ viro_quant <- read_excel("~/GitHub/VirosporeQuant/Magalie_virospore_quant/Data/A
 
 ```
 
+0. Set plot theme
+```{r}
+library(ggplot2)
+theme_set(theme_classic() +
+  theme(axis.title = element_text(size = 16),
+        axis.title.x = element_text(margin = margin(t = 15, b = 15)),
+        axis.title.y = element_text(margin = margin(l = 15, r = 15)),
+        axis.text = element_text(size = 13),
+        axis.text.x = element_text(margin = margin(t = 5)),
+        axis.text.y = element_text(margin = margin(r = 5)),
+        #axis.line.x = element_line(linewidth = 1),
+        #axis.line.y = element_line(linewidth = 1),
+        axis.ticks.y.right = element_line(linewidth = 1),
+        axis.text.y.right = element_text(size = 13, margin = margin(l = 5)),
+        axis.line.y.right = element_line(linewidth = 0.1),
+        axis.ticks.x.top = element_line(linewidth = 1),
+        axis.text.x.top = element_text(size = 13, margin = margin(b = 5)),
+        axis.line.x.top = element_line(linewidth = 0.1),
+        axis.line.x = element_blank(),
+        axis.line.y = element_blank(),
+        axis.ticks.x = element_line(linewidth = 1),
+        axis.ticks.y = element_line(linewidth = 1),
+        axis.ticks.length = unit(.1, "in"),
+        panel.border = element_rect(color = "grey20", fill = NA, linewidth = 1.5),
+        legend.text = element_text(size = 14),
+        strip.text = element_text(size = 14),
+        strip.background = element_blank()
+        )) 
+```
+
 1. Calculate VPFU/mL
 ```{r}
 # We want to calculate VPFU, CFU and PFU of the original suspension which is # of PFU or CFU / vol plated x total dilution factor
@@ -55,6 +85,7 @@ viro_quant.long <- viro_quant.new %>%
                values_to = "value") 
 ```
 
+Plot with shading
 ```{r}
 # Define shading regions
 region_shading <- data.frame(
@@ -150,7 +181,6 @@ ggplot(viro_quant_avg, aes(x = Distance_from_PFU_center_cm, y = mean_virospores)
     x = "Distance from PFU center (cm)",
     y = "Mean Virospores per cm²"
   ) +
-  theme_minimal() +
   coord_fixed(ratio = 0.1) + # Setting distance between x axis ticks
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
 
@@ -187,25 +217,48 @@ library(ggplot2)
 
 ggplot(viro_quant_avg, aes(x = Distance_from_PFU_center_cm, y = mean_virospores)) +
   geom_point(color = "#94f293", size = 3) +
-  geom_smooth(method = "loess", color = "#94f293", se = FALSE, size = 1) + 
+  geom_smooth(method = "loess", color = "#94f293", se = FALSE, size = 1) +
   geom_errorbar(aes(ymin = mean_virospores - SEM, ymax = mean_virospores + SEM),
                 width = 0.005, color = "black") +
   geom_vline(xintercept = c(0.05, 0.1),
              linetype = "dashed", color = "darkgray", size = 0.8) +
-  scale_fill_manual(values = c("Center" = "white", "Annulus" = "lightgray", "Lawn" = "darkgray")) +
   scale_y_log10() +
   labs(
-    title = "SPO1 Plaque Virospores",
+    title = "",
     x = "Distance from PFU center (cm)",
-    y = "Mean Virospores per cm²"
+    y = "Virospores per cm²"
   ) +
-  theme_classic() +    # <<-- use classic theme instead of minimal
-  coord_fixed(ratio = 0.1) +
-  theme(
-    panel.border = element_rect(color = "black", fill = NA, size = 1),
-    axis.line = element_line(color = "black"), 
-    plot.title = element_text(hjust = 0.5, vjust = 0.5)
-  )
+  coord_fixed(ratio = 0.1)
+
+
+
+```
+
+
+```{r}
+library(ggplot2)
+
+ggplot(viro_quant_avg, aes(x = Distance_from_PFU_center_cm, y = mean_virospores)) +
+  geom_point(color = "#94f293", size = 3) +
+  geom_smooth(method = "loess", color = "#94f293", se = FALSE, size = 1) +
+  geom_errorbar(aes(ymin = mean_virospores - SEM, ymax = mean_virospores + SEM),
+                width = 0.005, color = "black") +
+  geom_vline(xintercept = c(0.05, 0.1),
+             linetype = "dashed", color = "darkgray", size = 0.8) +
+  #scale_fill_manual(values = c("Center" = "white", "Annulus" = "lightgray", "Lawn" = "darkgray")) +
+  scale_y_log10() +
+  labs(
+    title = "",
+    x = "Distance from PFU center (cm)",
+    y = "Virospores per cm²"
+  ) +  #theme(axis.ticks.y.right = element_line(linewidth = 1)) +
+  #scale_y_continuous(sec.axis = sec_axis(~., labels = NULL)) +
+  coord_fixed(ratio = 0.1)
+
+    #panel.border = element_rect(color = "black", fill = NA, size = 1),
+    #axis.line = element_line(color = "black"), 
+    #plot.title = element_text(hjust = 0.5, vjust = 0.5)
+  #)
 ```
 Editing code for the following: 
 x-axis: “distance from center (cm)” to match figures in Magalie
@@ -243,7 +296,27 @@ ggplot(viro_quant_avg, aes(x = Distance_from_PFU_center_cm, y = mean_virospores)
 
 
 
-
+Trying to get the tick marks to appear
+```{r}
+viro.quant <- ggplot(viro_quant_avg, aes(x = Distance_from_PFU_center_cm, y = mean_virospores)) +
+  geom_point(color = "#94f293", size = 3) +
+  geom_smooth(method = "loess", color = "#94f293", se = FALSE, size = 1) +
+  geom_errorbar(aes(ymin = mean_virospores - SEM, ymax = mean_virospores + SEM),
+                width = 0.005, color = "black") +
+  geom_vline(xintercept = c(0.05, 0.1),
+             linetype = "dashed", color = "darkgray", size = 0.8) +
+  scale_x_continuous(
+    name = "Distance from PFU center (cm)",
+    sec.axis = dup_axis(name = NULL, labels = NULL)  # Adds top axis with same ticks
+  ) +
+  scale_y_log10(
+    name = "Virospores (#/cm²)",
+    sec.axis = dup_axis(name = NULL, labels = NULL)  # Adds right axis with same ticks
+  ) +
+  coord_fixed(ratio = 0.1) +
+  labs(title = "")
+ggsave("~/GitHub/danger.signal/Magalie_virospore_quant/Figures/virospore_plot.png", viro.quant, width = 6, height = 4)
+```
 
 
 

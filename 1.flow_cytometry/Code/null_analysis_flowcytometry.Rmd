@@ -8,6 +8,37 @@ Goal: Create figures that show null results for danger signals for Magalie et al
 ```{r setup, include=FALSE}
 setwd("~/GitHub/danger.signal/1.flow_cytometry")
 ```
+0. Set theme
+```{r}
+library(paletteer)
+library(ggplot2)
+theme_set(theme_classic() +
+  theme(axis.title = element_text(size = 16),
+        axis.title.x = element_text(margin = margin(t = 15, b = 15)),
+        axis.title.y = element_text(margin = margin(l = 15, r = 15)),
+        axis.text = element_text(size = 13),
+        axis.text.x = element_text(margin = margin(t = 5)),
+        axis.text.y = element_text(margin = margin(r = 5)),
+        #axis.line.x = element_line(linewidth = 1),
+        #axis.line.y = element_line(linewidth = 1),
+        axis.ticks.y.right = element_line(linewidth = 1),
+        axis.text.y.right = element_text(size = 13, margin = margin(l = 5)),
+        axis.line.y.right = element_line(linewidth = 0.1),
+        axis.ticks.x.top = element_line(linewidth = 1),
+        axis.text.x.top = element_text(size = 13, margin = margin(b = 5)),
+        axis.line.x.top = element_line(linewidth = 0.1),
+        axis.line.x = element_blank(),
+        axis.line.y = element_blank(),
+        axis.ticks.x = element_line(linewidth = 1),
+        axis.ticks.y = element_line(linewidth = 1),
+        axis.ticks.length = unit(.1, "in"),
+        panel.border = element_rect(color = "grey20", fill = NA, linewidth = 1.5),
+        legend.text = element_text(size = 14),
+        strip.text = element_text(size = 14),
+        strip.background = element_blank()
+        )) 
+colors <-paletteer_d("ggthemes::Miller_Stone")
+```
 
 1. Load data
 ```{r}
@@ -28,21 +59,82 @@ ggplot(flow.spore, aes(x = time.hr, y = spore.ml, color = trt)) +
     x = "Time (hours)",
     y = "Spores per mL",
     color = "Treatment"
-  ) +
-  theme(
-    panel.border = element_rect(color = "black", fill = NA, size = 1),
-    legend.position = "right",  # adjust legend position
-    theme_minimal()
-  )
+  ) #+
+  #theme(
+  #legend.position = "right",  # adjust legend position
+    #theme_minimal()
+  #)
 
 
 
 
 
 ```
+3.Setting up data to show means + SEM
+```{r}
+fc.summary <- flow.spore %>%
+  group_by(trt, time.hr) %>%
+  summarise(
+    mean_spores = mean(spore.ml, na.rm = TRUE),
+    sem_spores = sd(spore.ml, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  )
+
+library(dplyr)
+
+fc.summary <- fc.summary %>%
+  mutate(trt = recode(trt,
+                          "DSM" = "Fresh media",
+                          "LYSATE" = "Phage lysate",
+                          "SPENT" = "Spent media", 
+                          "BUFFER" = "Buffer"))
+```
 
 
-2A. Repeated measures ANOVA
+3A. Plotting for publication 
+```{r}
+
+#Setting colors 
+colors <- c(
+  "Spent media" = "#F47942FF",
+  "Phage lysate" = "#638B66FF",
+  "Fresh media" = "#849DB1FF",
+  "Buffer" = "#FBB04EFF"
+)
+
+fc.time.plot <- ggplot(fc.summary, aes(x = time.hr, y = mean_spores, color = trt)) +
+  geom_line() +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean_spores - sem_spores, ymax = mean_spores + sem_spores),
+                width = 0.2, color = "black") +
+  labs(
+    title = "",
+    x = "Time (h)",
+    y = "Spores (#/mL)",
+    color = "Treatment"
+  ) +
+  scale_x_continuous(
+    limits = c(10,40),
+    breaks = c(10, 15, 20, 25, 30),
+    sec.axis = dup_axis(name = NULL, labels = NULL)
+  ) +
+  scale_color_manual(values = colors) +
+  scale_y_continuous(sec.axis = dup_axis(name = NULL, labels = NULL)) + 
+  #theme()
+  #axis.line.y.right = element_line(linewidth = 0.1), 
+  #axis.line.x.top = element_line(linewidth = 0.1)
+  # theme(legend.position = "none") +
+  theme(legend.position = "none") +
+  annotate("text", x = 36, y = 800000000, label = "Spent media", color =  "#F47942FF", size = 3) +
+  annotate("text", x = 36, y = 880000000, label = "Phage lysate", color =  "#638B66FF", size = 3) +
+  annotate("text", x = 36, y = 1255000000, label = "Fresh media", color = "#849DB1FF", size = 3) +
+  annotate("text", x = 36, y = 950000000, label = "Buffer", color = "#FBB04EFF", size = 3)
+
+print(fc.time.plot)  
+
+```
+
+4. Repeated measures ANOVA
 ```{r}
 
 aov_result <- aov(spore.ml ~ trt * time.hr + Error(bio.rep/time.hr), data = flow.spore)
@@ -57,7 +149,7 @@ Given the outputs of the Rm-ANOVA we know:
 
 
 
-Figure that includes RM-ANOVA p-value
+4A.Figure that includes RM-ANOVA p-value
 ```{r}
 ggplot(flow.spore, aes(x = time.hr, y = spore.ml, color = trt)) +
   #geom_point() +
@@ -80,13 +172,12 @@ ggplot(flow.spore, aes(x = time.hr, y = spore.ml, color = trt)) +
   annotate("text", x = 20, y = 1500000000, label = "Rm-ANOVA p = 0.064", color = "black", size = 5)
 ```
 
-3. Set up data to estimate onset of sporulation (lag time) via Gompertz
+5. Set up data to estimate onset of sporulation (lag time) via Gompertz
 ```{r setup}
 rm(list=ls())
 setwd("~/GitHub/danger.signal/1.flow_cytometry/GrowthCurves")
 knitr::opts_knit$set(root.dir = "~/GitHub/danger.signal/1.flow_cytometry/GrowthCurves")
 ```
-
 
 ```{r}
 # Load packages and functions
@@ -102,7 +193,7 @@ sem <- function(x) sqrt(var(x)/length(x))
 cv <- function(x) 100*( sd(x)/mean(x))
 ```
 
-3A. Load data
+5A. Load data
 ```{r}
 flow.spore <- read.csv("~/GitHub/danger.signal/1.flow_cytometry/Data/clean_counts.csv")
 
@@ -111,7 +202,7 @@ flow.spore <- read.csv("~/GitHub/danger.signal/1.flow_cytometry/Data/clean_count
 ```
 
 
-3B. Wrangle data before GrowthCurver analysis
+5B. Wrangle data before GrowthCurver analysis
 
 ```{r}
 # Group by treatment
@@ -188,7 +279,7 @@ fc.spent.wide<- fc.spent.wide %>%
 
 ```
 
-Setting up to run Gompertz via GrowthCurver
+5C. Setting up to run Gompertz via GrowthCurver
 ```{r}
 fc.buffer.wide.df <- as.data.frame(fc.buffer.wide)
 fc.DSM.wide.df <- as.data.frame(fc.DSM.wide)
@@ -230,7 +321,6 @@ lysate.plate.summary$lag_time <- lysate.plate.summary$t_mid - (1 / lysate.plate.
 spent.plate.summary$lag_time <- spent.plate.summary$t_mid - (1 / spent.plate.summary$r)
 
 
-
 #Combine into one df but first add treatments
 buffer.plate.summary$Treatment <- "Buffer"
 DSM.plate.summary$Treatment <- "DSM"
@@ -245,6 +335,7 @@ lag_data <- bind_rows(
   lysate.plate.summary
 )
 ```
+5D.Initial plot
 ```{r}
 # Plot for publication 
 ggplot(lag_data, aes(x = Treatment, y = lag_time)) +
@@ -252,36 +343,92 @@ ggplot(lag_data, aes(x = Treatment, y = lag_time)) +
   geom_jitter(width = 0.1, size = 2, alpha = 0.7) +
   labs(
     x = "Treatment",
-    y = "GFP Onset time (hours)",
+    y = "Sporulation onset (h)",
     title = ""
   ) +
-  theme_minimal() +  # Add minimal theme first
-  theme(
-    panel.border = element_rect(color = "black", fill = NA, size = 1),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    panel.background = element_blank(),
-    plot.background = element_blank()
-  ) +
-  annotate("text", x = 2, y = 17, label = "ANOVA p = 0.731", color = "black", size = 5)
+  #theme_minimal() +  # Add minimal theme first
+  #theme(
+    # panel.border = element_rect(color = "black", fill = NA, size = 1),
+    # panel.grid.major = element_blank(),
+    # panel.grid.minor = element_blank(),
+    # panel.background = element_blank(),
+    # plot.background = element_blank()
+  #) #+
+  annotate("text", x = 3.7, y = 17, label = "ANOVA p-value = 0.731", color = "black", size = 5)
 ```
+5E. Anova of sporulation onset times and treatment 
 ```{r}
 # ANOVA
 anova.lag <- aov(lag_time ~ Treatment, data = lag_data)
 summary(anova.lag)
 ```
 
-
+5F. Plotting for publication
 ```{r}
+library(legendry)
+# Rename the treatments for publication 
+lag_data <- lag_data %>%
+  mutate(Treatment = recode(Treatment,
+                          "DSM" = "Fresh media",
+                          "Lysate" = "Phage lysate",
+                          "Spent" = "Spent media"))
 
+lag_data$Treatment <- factor(lag_data$Treatment, levels =c("Buffer", "Fresh media", "Spent media", "Phage lysate"))
+library(legendry)
+
+# Okay the above code adds the top ticks but does not preserve the bottom x axis 
+fc.box.plot <- ggplot(lag_data, aes(x = Treatment, y = lag_time)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.5) +
+  geom_jitter(width = 0.1, size = 2, alpha = 0.7) +
+  scale_x_discrete(labels = c(
+    "Water",
+    "Fresh\nmedia",
+    "Spent\nmedia",
+    "Phage\nlysate"
+  )) +
+  labs(
+    x = "Treatment",
+    y = "Sporulation onset (h)",
+    title = ""
+  ) +
+  scale_y_continuous(sec.axis = sec_axis(~., labels = NULL)) +
+  annotate("text", x = 3, y = 18, label = "ANOVA p-value = 0.7", color = "black") +
+  #theme(
+    #axis.ticks.x.top = element_line(),       # Show top ticks
+    #axis.line.x.top = element_line(),        # Draw top axis line
+    #axis.text.x.top = element_blank(),       # Optional: remove top labels
+    #axis.title.x.top = element_blank()       # Optional: remove top title
+  #) +
+  guides(x.sec = legendry::guide_axis_base(key = key_map(data = lag_data, aesthetic = unique(Treatment), label = c("", "", "", ""))))
+
+print(fc.box.plot)
+```
+6. Plot the time series plot and box plot together
+```{r}
+library(ggplot2)
+library(cowplot)
+#library(magick)
+#plate.img <- image_read("~/GitHub/danger.signal/2.square_plate/Data/23_h-1.tif")
+
+#Convert image to cowplot object
+# Step 2: Convert image to a cowplot object
+#img_plot <- ggdraw() + draw_image(plate.img)
+empty.plot <- ggdraw()
+# Okay actually we will add the image later, create an empty plot 
+# Step 3: Combine all plots with the image on the left
+fc.combined_plots <- ggdraw() +
+  draw_plot(empty.plot, x = 0,   y = 0, width = 1/3, height = 1) +  # Left image
+  draw_plot(fc.time.plot,  x = 1/3, y = 0, width = 1/3, height = 1) +  # Center plot
+  draw_plot(fc.box.plot,   x = 2/3, y = 0, width = 1/3, height = 1) +  # Right plot
+  theme(plot.background = element_rect(fill= "white", color = NA)) +
+  draw_plot_label(label = c("(A)", "(B)", "(C)"), size = 16,
+                  x = c(0.05, 0.38, 0.71), y = c(1, 1, 1))
+
+print(fc.combined_plots)
+ggsave("~/GitHub/danger.signal/1.flow_cytometry/Figures/fc.combined_plotswspace.png", fc.combined_plots, width = 12, height = 4)
 ```
 
-
-
-
-
-
-3B. Wrangle data (trying this on one subset of data before doing all treatments)
+Extra: Trying to run modified Gompertz out of GrowthCurves3B
 ```{r}
 # Separate data out by experimental plate 
 # fc.buffer.exp1 <- fc.buffer %>%
@@ -346,7 +493,7 @@ fc.buffer.wide.clean.exp1 <- fc.buffer.wide.clean.exp1 %>%
 ```
 
 
-3D. Run Gompertz
+Extra: Attempt to run modified Gompertz
 ```{r}
 setwd("~/GitHub/danger.signal/1.flow_cytometry/GrowthCurves/bin")
 fc.buffer.1 <- growth.modGomp(input = fc.buffer.wide.clean.exp1, output.name = "fc.buffer.exp1.1.parms",

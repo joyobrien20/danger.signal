@@ -9,6 +9,60 @@ output: html_document
 setwd("~/GitHub/danger.signal/2.square_plate")
 ```
 
+0. Set plot theme
+```{r}
+library(paletteer)
+library(ggplot2)
+theme_set(theme_classic() +
+  theme(axis.title = element_text(size = 16),
+        axis.title.x = element_text(margin = margin(t = 15, b = 15)),
+        axis.title.y = element_text(margin = margin(l = 15, r = 15)),
+        axis.text = element_text(size = 13),
+        axis.text.x = element_text(margin = margin(t = 5)),
+        axis.text.y = element_text(margin = margin(r = 5)),
+        #axis.line.x = element_line(linewidth = 1),
+        #axis.line.y = element_line(linewidth = 1),
+        axis.ticks.y.right = element_line(linewidth = 1),
+        axis.text.y.right = element_text(size = 13, margin = margin(l = 5)),
+        axis.line.y.right = element_line(linewidth = 0.1),
+        axis.ticks.x.top = element_line(linewidth = 1),
+        axis.text.x.top = element_text(size = 13, margin = margin(b = 5)),
+        axis.line.x.top = element_line(linewidth = 0.1),
+        axis.line.x = element_blank(),
+        axis.line.y = element_blank(),
+        axis.ticks.x = element_line(linewidth = 1),
+        axis.ticks.y = element_line(linewidth = 1),
+        axis.ticks.length = unit(.1, "in"),
+        panel.border = element_rect(color = "grey20", fill = NA, linewidth = 1.5),
+        legend.text = element_text(size = 14),
+        strip.text = element_text(size = 14),
+        strip.background = element_blank()
+        )) 
+colors <-paletteer_d("ggthemes::Miller_Stone")
+
+# Emmi's theme set code: 
+# theme_set(theme_classic() +
+#   theme(axis.title = element_text(size = 16),
+#         axis.title.x = element_text(margin = margin(t = 15, b = 15)),
+#         axis.title.y = element_text(margin = margin(l = 15, r = 15)),
+#         axis.text = element_text(size = 13),
+#         axis.text.x = element_text(margin = margin(t = 5)),
+#         axis.text.y = element_text(margin = margin(r = 5)),
+#         #axis.line.x = element_line(linewidth = 1),
+#         #axis.line.y = element_line(linewidth = 1),
+#         axis.line.x = element_blank(),
+#         axis.line.y = element_blank(),
+#         axis.ticks.x = element_line(linewidth = 1),
+#         axis.ticks.y = element_line(linewidth = 1),
+#         axis.ticks.length = unit(.1, "in"),
+#         panel.border = element_rect(color = "grey20", fill = NA, linewidth = 1.5),
+#         legend.text = element_text(size = 14),
+#         strip.text = element_text(size = 14),
+#         strip.background = element_blank()
+#         ))
+```
+
+
 1. Load in all data
 ```{r}
 library(readxl)
@@ -84,7 +138,7 @@ square.plate.meta <- left_join(square.plate, meta, by = c("Sample_ID", "Time_h")
 # Add a column specifying dilution for each sample
 library(dplyr)
 library(stringr)
-
+library(tidyr)
 square.plate.norm <- square.plate.meta %>%
   mutate(
     Dilution = str_extract(Sample, "e\\d+") %>%       # extract 'e1', 'e2', etc.
@@ -119,14 +173,18 @@ square.plate.bg <- square.plate.norm %>%
     IntDen_corr = IntDen - bg_IntDen,
     RawIntDen_corr = RawIntDen - bg_RawIntDen
   )
-# Create dataset with only the corrected values and sample identifiers
-square.plate.corr <- square.plate.bg %>%
-  select(Sample_ID, Sample, Treatment, Time_h,
-         Area_corr, Mean_corr, Min_corr, Max_corr,
-         IntDen_corr, RawIntDen_corr)
 
-# Create new dataset that is the corrected values only 
-# Remove the samples that contain background
+# Create dataset with only the corrected values and sample identifiers
+square.plate.corr <- square.plate.bg %>% # for some reason this code is broken so we have to force dplyr select
+  select(Sample_ID, Sample, Treatment, Time_h,
+          Area_corr, Mean_corr, Min_corr, Max_corr,
+          IntDen_corr, RawIntDen_corr)
+
+# square.plate.corr <- square.plate.bg %>%
+#   dplyr::select(Sample_ID, Sample, Treatment, Time_h,
+#                 Area_corr, Mean_corr, Min_corr, Max_corr,
+#                 IntDen_corr, RawIntDen_corr)
+
 ```
 
 
@@ -146,38 +204,88 @@ square.plate.corr <- square.plate.bg %>%
 
 ```
 
-1D. Plot (first look)
+1E. Plotting/Edits for publication worthy figure
 ```{r}
-library(ggplot2)
+library(dplyr)
+library(tidyr)
 
-ggplot(square.plate.corr, aes(x = Time_h, y = IntDen_corr, color = Treatment)) +
-  #geom_line() +
-  geom_smooth(span = 0.4, alpha = 0.2) +
-  #geom_smooth(span, se = TRUE, alpha = 0.2) +
-  geom_point() +
-  #scale_y_log10()
-  labs(
-    title = "",
-    x = "Time (hours)",
-    y = "Intensity",
-    color = "Treatment"
-  ) +
-  theme(
-    panel.border = element_rect(color = "black", fill = NA, size = 1),
-    legend.position = "right",  # adjust legend position
-    theme_minimal()
+sp.summary <- square.plate.corr %>%
+  group_by(Treatment, Time_h) %>%
+  summarise(
+    mean_IntDen = mean(IntDen_corr, na.rm = TRUE),
+    sem_IntDen = sd(IntDen_corr, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
   )
 ```
-1E. Plot (clean for publication)
+
+1F. Making more informed treatment labels (renaming the treatments)
+```{r}
+
+library(dplyr)
+
+sp.summary <- sp.summary %>%
+  mutate(Treatment = recode(Treatment,
+                            "Background" = "Background",
+                            "DSM" = "Fresh media",
+                            "Non_reporter_control" = "Non-GFP",
+                            "Phage_Spent_DSM" = "Phage lysate",
+                            "Scells_Spent_DSM" = "Dead cells",
+                            "Spent_DSM" = "Spent media",
+                            "water" = "Water"))
+```
+
+
+1G.Plot for publication
+```{r}
+sp.time.plot <- ggplot(sp.summary, aes(x = Time_h, y = mean_IntDen, color = Treatment)) +
+  geom_line() +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean_IntDen - sem_IntDen, ymax = mean_IntDen + sem_IntDen),
+                width = 0.2, color = "black") +
+  labs(
+    title = "",
+    x = "Time (h)",
+    y = "GFP (a.u.)",
+    color = "Treatment"
+  ) +
+  scale_x_continuous(
+    limits = c(10,28),
+    breaks = c(10, 15, 20, 25),
+    sec.axis = dup_axis(name = NULL, labels = NULL)
+  ) +
+  scale_color_manual(values = colors) + # This is the only way I know how to get the tick marks (How does Emmi do it)
+  scale_y_continuous(sec.axis = dup_axis(name = NULL, labels = NULL)) +
+  #theme()
+  #axis.line.y.right = element_line(linewidth = 0.1), 
+  #axis.line.x.top = element_line(linewidth = 0.1)
+  theme(legend.position = "none") +
+  annotate("text", x = 26, y = 8900, label = "Dead cells", color = "#BFBB60FF", size = 3) +
+  annotate("text", x = 26, y = 8500, label = "Spent media", color =  "#F47942FF", size = 3) +
+    annotate("text", x = 26, y = 8100, label = "Phage lysate", color =  "#638B66FF", size = 3) +
+  annotate("text", x = 26, y = 7700, label = "Fresh media", color = "#849DB1FF", size = 3) +
+  annotate("text", x = 26, y = 6500, label = "Water", color = "#FBB04EFF", size = 3) +
+  annotate("text", x = 26, y = 900, label = "Non-GFP", color = "#A2CEAAFF", size = 3) + 
+  annotate("text", x = 26, y = 0, label = "Background", color = "#4F6980FF", size = 3)
+  
+sp.time.plot  
+#+
+  #annotate("text", x = 20, y = 10000, label = "Rm-ANOVA p = 0.0001*", color = "black", size = 5)
+
+
+```
+
+Extra: Plot (old)
 ```{r}
 library(ggplot2)
 
-ggplot(square.plate.corr, aes(x = Time_h, y = IntDen_corr, color = Treatment)) +
-  #geom_line() +
-  geom_smooth(span = 0.4, alpha = 0.2) +
+ggplot(square.plate.corr, aes(x = Time, y = IntDen_corr, color = Treatment)) +
+  geom_line() +
+  #geom_smooth(span = 0.4, alpha = 0.2) +
   #scale_y_log10() +
   #geom_smooth(span, se = TRUE, alpha = 0.2) +
-  #geom_point() +
+  geom_point() +
+  geom_errorbar(aes(ymin = IntDen_corr - SEM, ymax = IntDen_corr + SEM),
+              width = 0.005, color = "black") +
   labs(
     title = "",
     x = "Time (hours)",
@@ -348,9 +456,6 @@ sp.water.1 <- growth.modGomp(input = sp.water.wide.df, output.name = "sp.water.1
 # specified samples
 # Smoothing = F
 
-```
-
-```{r}
 # Further debugging
 #Error in ts(x) : 'ts' object must have one or more observations
 
@@ -360,9 +465,7 @@ print(sum(is.na(sp.water.wide$y)))  # Check for missing values
 ```
 
 
-
-
-4. Attempting to obtain parameters via GrowthCurver package (back up method?)
+4. Obtain parameters via GrowthCurver package (back up method)
 ```{r}
 # Make all data.frames
 sp.water.wide.df <- as.data.frame(sp.water.wide)
@@ -408,7 +511,7 @@ phage.plate.summary <- SummarizeGrowthByPlate(plate = phage.plate)
 head(phage.plate.summary)
 ```
 
-Now calculate lag time
+4A. Calculate lag time (onset time)
 ```{r}
 # Calculate lag time 
 water.plate.summary$lag_time <- water.plate.summary$t_mid - (1 / water.plate.summary$r)
@@ -433,6 +536,7 @@ lag_data <- bind_rows(
 )
 ```
 
+Extra: Quick look at the data
 ```{r}
 library(ggplot2)
 
@@ -446,47 +550,124 @@ ggplot(lag_data, aes(x = Treatment, y = lag_time, fill = Treatment)) +
 
 ```
 
+5. ANOVA onset time
 ```{r}
 # ANOVA
-anova.lag <- aov(lag_time ~ Treatment, data = lag_data)
+anova.lag <- aov(lag_time ~ Treatment, data = lag_data) # ANOVA
 summary(anova.lag)
+tukey_result.sp <- TukeyHSD(anova.lag) # Obtain tukey result
+
+# Obtain group numbers for significance
+library(emmeans)
+library(multcomp)
+
+# Get estimated marginal means
+emm <- emmeans(anova.lag, pairwise ~ Treatment)
+
+# Compact Letter Display (CLD)
+# NOTE: adjust = "tukey" ensures same correction as TukeyHSD
+cld_result <- cld(emm$emmeans, adjust = "tukey")
+
+# View results
+print(cld_result)
+
+
 ```
 
+4B. Renaming treatments for publication
 ```{r}
-# Plot for publication 
-ggplot(lag_data, aes(x = Treatment, y = lag_time)) +
-  geom_boxplot(outlier.shape = NA, fill = "#94f293", alpha = 0.5) +
+
+library(dplyr)
+
+lag_data <- lag_data %>%
+  mutate(Treatment = recode(Treatment,
+                            "Background" = "Background",
+                            "DSM" = "Fresh media",
+                            "Non_reporter_control" = "Non-GFP",
+                            "Phage" = "Phage lysate",
+                            "SC_Spent" = "Dead cells",
+                            "Spent" = "Spent media",
+                            "water" = "Water"))
+```
+
+
+4C. Reordering appearance of treatments and plotting (COME BACK TO THIS NEED TO ADD TOP AXIS TICK MARKS)
+```{r}
+lag_data$Treatment <- factor(lag_data$Treatment, levels =c("Water", "Fresh media", "Spent media", "Dead cells", "Phage lysate"))
+library(legendry)
+# Okay the above code adds the top ticks but does not preserve the bottom x axis 
+sp.box.plot <- ggplot(lag_data, aes(x = Treatment, y = lag_time)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.5) +
   geom_jitter(width = 0.1, size = 2, alpha = 0.7) +
+  scale_x_discrete(labels = c(
+    "Water",
+    "Fresh\nmedia",
+    "Spent\nmedia",
+    "Dead\ncells",
+    "Phage\nlysate"
+  )) +
   labs(
     x = "Treatment",
-    y = "GFP Onset time (hours)",
+    y = "Sporulation onset (h)",
     title = ""
   ) +
-  theme_minimal() +  # Add minimal theme first
+  scale_y_continuous(sec.axis = sec_axis(~., labels = NULL)) +
+  annotate("text", x = 4, y = 18, label = "ANOVA p-value = 0.1", color = "black") +
   theme(
-    panel.border = element_rect(color = "black", fill = NA, size = 1),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    panel.background = element_blank(),
-    plot.background = element_blank()
+    axis.ticks.x.top = element_line(),       # Show top ticks
+    axis.line.x.top = element_line(),        # Draw top axis line
+    axis.text.x.top = element_blank(),       # Optional: remove top labels
+    axis.title.x.top = element_blank()       # Optional: remove top title
   ) +
-  annotate("text", x = 2, y = 17, label = "ANOVA p = 0.153", color = "black", size = 5)
+  guides(x.sec = legendry::guide_axis_base(key = key_map(data = lag_data, aesthetic = unique(Treatment), label = c("", "", "", "", ""))))
+print(sp.box.plot)
 ```
 
 
-
+5. Plotting the two plots together (square plate time series plot and box plot) + including photo of experiment
 ```{r}
-# okay we can get lag time this way, so now we need to rinse and repeat for each treatment, and then greate a large plot showing each treatment
+library(ggplot2)
+library(cowplot)
+library(magick)
+plate.img <- image_read("~/GitHub/danger.signal/2.square_plate/Data/23_h-1.tif")
 
-# New order of op:
-# separate data out by treatment 
-# run growthcurver
-# obtain lag time 
-# Repeat for each treatment
-# Merge all lag time variables together into one df
-# Add a column called treatment 
-# Box plot and ANOVA
+#Convert image to cowplot object
+# Step 2: Convert image to a cowplot object
+img_plot <- ggdraw() + draw_image(plate.img)
+empty.plot <- ggdraw()
+# Okay actually we will add the image later, create an empty plot 
+# Step 3: Combine all plots with the image on the left
+combined_plots <- ggdraw() +
+  draw_plot(empty.plot, x = 0,   y = 0, width = 1/3, height = 1) +  # Left image
+  draw_plot(sp.time.plot,  x = 1/3, y = 0, width = 1/3, height = 1) +  # Center plot
+  draw_plot(sp.box.plot,   x = 2/3, y = 0, width = 1/3, height = 1) +  # Right plot
+  theme(plot.background = element_rect(fill= "white", color = NA)) +
+  draw_plot_label(label = c("(A)", "(B)", "(C)"), size = 16,
+                  x = c(0.05, 0.38, 0.71), y = c(1, 1, 1))
 
+print(combined_plots)
+
+ggsave("~/GitHub/danger.signal/2.square_plate/Figures/combined_plotswspace.png", combined_plots, width = 12, height = 4)
+```
+
+Extra: Original version of the above code
+```{r}
+# Need to adjust to add the picture
+#dev.new(width=5, height=4)
+dev.new(width=5,height=4,noRStudioGD = TRUE)
+
+# Include a space before the two plots for the picture
+# Use ggdraw and draw_plot
+combined_plots <- ggdraw() +
+  draw_plot(sp.time.plot, x = 0,   y = 0, width = 0.5, height = 1) +  # Left plot
+  draw_plot(sp.box.plot, x = 0.5, y = 0, width = 0.5, height = 1) +    # Right plot
+  theme(plot.background = element_rect(fill= "white", color = NA)) +
+  #draw_plot_label(label = c("(A)", "(B)", "(C)"), size = 20, x=c(0.07, 0.53), y = c(1, 1))
+
+# Show the combined plot
+print(combined_plots)
+
+#ggsave("~/GitHub/danger.signal/2.square_plate/Figures/combined_plots.png", combined_plots, width = 12, height = 4)
 
 ```
 
