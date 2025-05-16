@@ -82,9 +82,12 @@ growth.modGomp <- function(input = " ", output.name = " ", skip = "",
                 length(samples), ")", sep = ""), quote=F)
 
     # Extract Data
-    t <- data.in$Time
+    print(data.in)
+    t <- data.in$Time 
+    print(t)
     s <- data.in[,which(colnames(data.in) == samples[i])] # this is where the ts() error is coming from; this was changed from the original code
-    if (max(s) - min(s) < delta) {
+    print(s)
+     if (max(s) - min(s) < delta) {
       plot(s ~ t, main=samples[i], 
            ylab=expression(paste("RFU")), 
            xlab=expression(paste("Time (hrs)")),
