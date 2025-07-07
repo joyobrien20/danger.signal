@@ -314,8 +314,8 @@ square.plate.meta.noWT <- square.plate.corr %>%
 square.plate.meta.noWTBL <- square.plate.meta.noWT %>%
   filter(Treatment != "Background")
 
-#square.plate.meta.noWTBL <- square.plate.meta.noWTBL %>%
-  #filter(Treatment != "water")
+square.plate.meta.noWTBL <- square.plate.meta.noWTBL %>%
+  filter(Treatment != "water")
 
 ```
 

@@ -9,6 +9,38 @@ output: html_document
 setwd("~/GitHub/VirosporeQuant/Magalie_virospore_quant")
 ```
 
+0. Set plot theme for any plots
+```{r}
+library(paletteer)
+library(ggplot2)
+theme_set(theme_classic() +
+  theme(axis.title = element_text(size = 16),
+        axis.title.x = element_text(margin = margin(t = 15, b = 15)),
+        axis.title.y = element_text(margin = margin(l = 15, r = 15)),
+        axis.text = element_text(size = 13),
+        axis.text.x = element_text(margin = margin(t = 5)),
+        axis.text.y = element_text(margin = margin(r = 5)),
+        #axis.line.x = element_line(linewidth = 1),
+        #axis.line.y = element_line(linewidth = 1),
+        axis.ticks.y.right = element_line(linewidth = 1),
+        axis.text.y.right = element_text(size = 13, margin = margin(l = 5)),
+        axis.line.y.right = element_line(linewidth = 0.1),
+        axis.ticks.x.top = element_line(linewidth = 1),
+        axis.text.x.top = element_text(size = 13, margin = margin(b = 5)),
+        axis.line.x.top = element_line(linewidth = 0.1),
+        axis.line.x = element_blank(),
+        axis.line.y = element_blank(),
+        axis.ticks.x = element_line(linewidth = 1),
+        axis.ticks.y = element_line(linewidth = 1),
+        axis.ticks.length = unit(.1, "in"),
+        panel.border = element_rect(color = "grey20", fill = NA, linewidth = 1.5),
+        legend.text = element_text(size = 14),
+        strip.text = element_text(size = 14),
+        strip.background = element_blank()
+        )) 
+colors <-paletteer_d("ggthemes::Miller_Stone")
+```
+
 ```{r}
 # Load Library
 library(readxl)
@@ -96,12 +128,15 @@ viro_quant.new$Spores_total <- viro_quant.new$Spores_CFU_3_cm2 + viro_quant.new$
 2. Prepare to plot the data 
 2A. Create new data frame and average the counts from the technical replicates (diluted samples)
 ```{r}
-# New data frame
-viro_quant.new <- viro_quant[, c("Plaque", "Sample", "Region", "VPFU_cm2", "Distance_from_PFU_center_cm", "Free_PFU_3_cm2","Free_PFU_5_cm2", "Free_PFU_7_cm2", "Spores_CFU_3_cm2", "Spores_CFU_5_cm2", "Spores_CFU_7_cm2")] #"total_spores_3rep", #"total_spores_5rep", #"total_spores_7rep
+# # New data frame
+# viro_quant.new <- viro_quant[, c("Plaque", "Sample", "Region", "VPFU_cm2", "Distance_from_PFU_center_cm", "Free_PFU_3_cm2","Free_PFU_5_cm2", "Free_PFU_7_cm2", "Spores_CFU_3_cm2", "Spores_CFU_5_cm2", "Spores_CFU_7_cm2")] #"total_spores_3rep", #"total_spores_5rep", #"total_spores_7rep
+
+# New data frame 
+viro_quant.new <- viro_quant[, c("Plaque", "Sample", "Region", "VPFU_cm2", "Distance_from_PFU_center_cm", "Free_PFU_3_cm2", "Spores_CFU_3_cm2")] #"total_spores_3rep", #"total_spores_5rep", #"total_spores_7rep
 
 # Average the diluted replicate samples
-viro_quant.new$Free_PFU_Avg <- rowMeans(viro_quant.new[, c("Free_PFU_3_cm2", "Free_PFU_5_cm2", "Free_PFU_7_cm2")], na.rm = TRUE)
-viro_quant.new$Spores_CFU_Avg <- rowMeans(viro_quant.new[, c("Spores_CFU_3_cm2", "Spores_CFU_5_cm2", "Spores_CFU_7_cm2")], na.rm = TRUE)
+# viro_quant.new$Free_PFU_Avg <- rowMeans(viro_quant.new[, c("Free_PFU_3_cm2", "Free_PFU_5_cm2", "Free_PFU_7_cm2")], na.rm = TRUE)
+# viro_quant.new$Spores_CFU_Avg <- rowMeans(viro_quant.new[, c("Spores_CFU_3_cm2", "Spores_CFU_5_cm2", "Spores_CFU_7_cm2")], na.rm = TRUE)
 
 # Calculate total spores with VPFU and the averages 
 viro_quant.new$Spores_total <- viro_quant.new$Spores_CFU_3_cm2 + viro_quant.new$VPFU_cm2
