@@ -58,29 +58,66 @@ theme_set(theme_classic() +
 
 1. Calculate VPFU/mL
 ```{r}
+# Change TMTC to 300 (because for some reason its not loading in)
+library(dplyr)
+
+viro_quant <- viro_quant %>%
+  mutate(
+    Spores_CFU_10e1 = as.numeric(ifelse(Spores_CFU_10e1 == "TMTC", 300, Spores_CFU_10e1)),
+    VPFU_10e1 = as.numeric(ifelse(VPFU_10e1 == "TMTC", 300, VPFU_10e1))
+  )
+
+
+
 # We want to calculate VPFU, CFU and PFU of the original suspension which is # of PFU or CFU / vol plated x total dilution factor
 
 # VPFU only (for now)
 viro_quant$VPFU_mL_1 <- viro_quant$VPFU_10e1 / (0.1 * (10^-1)) # using data from the 10^-1 dilution, disregarding the 10^-2 data
 #viro_quant$VPFU_mL_2 <- viro_quant$VPFU_10e2 / (0.1 * (10^-2))
+
+# Adding in the spores 
+viro_quant$Spores_ml_1 <- viro_quant$Spores_CFU_10e1 / (0.1 * (10^-1))
 ```
 
 1B. Calculate CFU/mL and PFU/mL per stock solution for each sample
 ```{r}
 viro_quant$VPFU_stock <- viro_quant$VPFU_mL_1 * 1.5 # 1.5 mL is the volume that the sample was deposited into
+# CFU/ml 
+viro_quant$Spores_stock <- viro_quant$Spores_ml_1 * 1.5 
 ```
 1C. Calulate the amount of virospores per cm^2 area
 ```{r}
 # For virospores
 viro_quant$Virospores_cm2 <- viro_quant$VPFU_stock / (0.00785) # this is the area of the pipette tip in cm ^2
+
+# For spores
+viro_quant$Spores_cm2 <- viro_quant$Spores_stock / (0.00785)
+
+# Create column of total spores
+viro_quant$total_spores_cm2 <- viro_quant$Virospores_cm2 + viro_quant$Spores_cm2
+
+
+# Find out how much of the total spores contain virospores for each part of the annulus, report as percentage in figure caption
+library(dplyr)
+# Calculate percent virospores per region
+viro_summary <- viro_quant %>%
+  group_by(Region) %>%
+  summarise(
+    total_spores = sum(total_spores_cm2, na.rm = TRUE),
+    total_virospores = sum(Virospores_cm2, na.rm = TRUE),
+    percent_virospores = (total_virospores / total_spores) * 100
+  )
+
+viro_summary
+
 ```
 
 2. Plotting counts
 ```{r}
-viro_quant.new <- viro_quant[, c("Plaque", "Sample", "Region", "Virospores_cm2", "Distance_from_PFU_center_cm")]
+viro_quant.new <- viro_quant[, c("Plaque", "Sample", "Region", "Virospores_cm2", "Distance_from_PFU_center_cm", "Spores_cm2")]
 
 viro_quant.long <- viro_quant.new %>%
-  pivot_longer(cols = c(Virospores_cm2), 
+  pivot_longer(cols = c(Virospores_cm2, Spores_cm2), 
                names_to = "variable", 
                values_to = "value") 
 ```
@@ -96,7 +133,7 @@ region_shading <- data.frame(
 region_shading$Region <- factor(region_shading$Region, levels = c("Center", "Annulus", "Lawn"))
 
 # Plot with facet wrap
-ggplot(viro_quant.long, aes(x = Distance_from_PFU_center_cm, y = value, color = Plaque, group = Plaque)) +
+ggplot(viro_quant.long, aes(x = Distance_from_PFU_center_cm, y = value, color = variable, group = Plaque)) +
   # Add shaded regions
   geom_rect(data = region_shading, inherit.aes = FALSE, 
             aes(xmin = xmin, xmax = xmax, ymin = 0, ymax = Inf, fill = Region), 
@@ -217,7 +254,8 @@ library(ggplot2)
 
 ggplot(viro_quant_avg, aes(x = Distance_from_PFU_center_cm, y = mean_virospores)) +
   geom_point(color = "#94f293", size = 3) +
-  geom_smooth(method = "loess", color = "#94f293", se = FALSE, size = 1) +
+  geom_line(color = "#94f293") +
+  #geom_smooth(method = "loess", color = "#94f293", se = FALSE, size = 1) +
   geom_errorbar(aes(ymin = mean_virospores - SEM, ymax = mean_virospores + SEM),
                 width = 0.005, color = "black") +
   geom_vline(xintercept = c(0.05, 0.1),
@@ -226,7 +264,7 @@ ggplot(viro_quant_avg, aes(x = Distance_from_PFU_center_cm, y = mean_virospores)
   labs(
     title = "",
     x = "Distance from PFU center (cm)",
-    y = "Virospores per cm²"
+    y = "Virospores (#/cm²)"
   ) +
   coord_fixed(ratio = 0.1)
 
