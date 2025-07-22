@@ -114,10 +114,10 @@ viro_summary
 
 2. Plotting counts
 ```{r}
-viro_quant.new <- viro_quant[, c("Plaque", "Sample", "Region", "Virospores_cm2", "Distance_from_PFU_center_cm", "Spores_cm2")]
+viro_quant.new <- viro_quant[, c("Plaque", "Sample", "Region", "Virospores_cm2", "Distance_from_PFU_center_cm")] # add Spores_cm2 here when needed
 
 viro_quant.long <- viro_quant.new %>%
-  pivot_longer(cols = c(Virospores_cm2, Spores_cm2), 
+  pivot_longer(cols = c(Virospores_cm2), # Spores_cm2
                names_to = "variable", 
                values_to = "value") 
 ```
@@ -307,12 +307,12 @@ To match Magalie, we might consider plotting standard deviations and means as ab
 
 ```{r}
 library(ggplot2)
-
+svg("virospore_plot.svg", width = 6, height = 4)
 ggplot(viro_quant_avg, aes(x = Distance_from_PFU_center_cm, y = mean_virospores)) +
-  geom_point(color = "#94f293", size = 3) +
-  geom_smooth(method = "loess", color = "#94f293", se = FALSE, size = 1) + 
+  geom_line(color = "#94f293", size = 1) + 
   geom_errorbar(aes(ymin = mean_virospores - SEM, ymax = mean_virospores + SEM),
                 width = 0.005, color = "black") +
+    geom_point(color = "red", size = 3) +
   geom_vline(xintercept = c(0.05, 0.1),
              linetype = "dashed", color = "darkgray", size = 0.8) +
   scale_fill_manual(values = c("Center" = "white", "Annulus" = "lightgray", "Lawn" = "darkgray")) +
@@ -330,8 +330,43 @@ ggplot(viro_quant_avg, aes(x = Distance_from_PFU_center_cm, y = mean_virospores)
     plot.title = element_text(hjust = 0.5, vjust = 0.5)
   )
 
+dev.off()
 ```
 
+```{r}
+library(ggplot2)
+
+# Save as SVG
+#svg("~/GitHub/danger.signal/Magalie_virospore_quant/virospore_plot_reddash.svg", width = 8, height = 6)
+pdf("~/GitHub/danger.signal/Magalie_virospore_quant/virospore_plot_red_green.pdf", width = 6, height = 4)
+
+# Create the plot
+ggplot(viro_quant_avg, aes(x = Distance_from_PFU_center_cm, y = mean_virospores)) +
+  geom_line(color = "#94f293", size = 1) +  # straight line connecting points
+    geom_vline(xintercept = c(0.05, 0.1),
+             linetype = "dashed", color = "darkgray", size = 0.8) +
+  geom_errorbar(aes(ymin = mean_virospores - SEM, ymax = mean_virospores + SEM),
+                width = 0.005, color = "black") +
+      geom_point(color = "red", size = 3) +
+  scale_fill_manual(values = c("Center" = "white", "Annulus" = "lightgray", "Lawn" = "darkgray")) +
+  scale_y_log10() +
+  labs(
+    title = "",
+    x = "Distance from center (cm)",
+    y = "Virospores (#/cm²)"
+  ) +
+  theme_classic() +
+  coord_fixed(ratio = 0.1) +
+  theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    axis.line = element_line(color = "black"), 
+    plot.title = element_text(hjust = 0.5, vjust = 0.5)
+  )
+
+# Close the device
+dev.off()
+
+```
 
 
 Trying to get the tick marks to appear

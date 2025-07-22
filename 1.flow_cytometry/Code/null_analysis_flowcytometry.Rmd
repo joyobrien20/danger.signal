@@ -72,6 +72,7 @@ ggplot(flow.spore, aes(x = time.hr, y = spore.ml, color = trt)) +
 ```
 3.Setting up data to show means + SEM
 ```{r}
+library(dplyr)
 fc.summary <- flow.spore %>%
   group_by(trt, time.hr) %>%
   summarise(
@@ -205,6 +206,8 @@ flow.spore <- read.csv("~/GitHub/danger.signal/1.flow_cytometry/Data/clean_count
 5B. Wrangle data before GrowthCurver analysis
 
 ```{r}
+library(dplyr)
+library(tidyr)
 # Group by treatment
 
 fc.buffer <- flow.spore %>%
@@ -381,7 +384,7 @@ fc.box.plot <- ggplot(lag_data, aes(x = Treatment, y = lag_time)) +
   geom_boxplot(outlier.shape = NA, alpha = 0.5) +
   geom_jitter(width = 0.1, size = 2, alpha = 0.7) +
   scale_x_discrete(labels = c(
-    "Water",
+    "Buffer",
     "Fresh\nmedia",
     "Spent\nmedia",
     "Phage\nlysate"
